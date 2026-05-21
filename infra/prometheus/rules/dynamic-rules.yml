@@ -1,0 +1,34 @@
+groups:
+  - name: dynamic-monitoring-rules
+    interval: 5s
+    rules:
+      - alert: HighTemperature
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High Temperature"
+          description: "Dynamic rule High Temperature triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Temperature"
+      - alert: DynamicHighTemperature
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dynamic High Temperature"
+          description: "Dynamic rule Dynamic High Temperature triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "Dynamic High Temperature"
+      - alert: DynamicHighCPU
+        expr: asset_cpu_usage_percent > 90.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "Dynamic High CPU"
+          description: "Dynamic rule Dynamic High CPU triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "Dynamic High CPU"

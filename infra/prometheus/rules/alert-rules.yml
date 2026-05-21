@@ -1,0 +1,14 @@
+groups:
+  - name: telemetry-alert-rules
+    interval: 5s
+    rules:
+      - alert: HighTemperature
+        expr: asset_temperature_celsius > 80
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High temperature detected"
+          description: "Asset {{ $labels.asset_id }} temperature is above threshold"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Temperature"

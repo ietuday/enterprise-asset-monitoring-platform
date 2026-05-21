@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 30s
+
+route:
+  receiver: "alert-service"
+  group_by: ["alertname", "asset_id"]
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 1m
+
+receivers:
+  - name: "alert-service"
+    webhook_configs:
+      - url: "http://alert-service:5003/alerts/webhook"
+        send_resolved: true
