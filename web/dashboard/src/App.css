@@ -43,11 +43,13 @@ label {
   font-size: 14px;
 }
 
-input {
+input,
+select {
   padding: 12px;
   border: 1px solid #d5dce3;
   border-radius: 10px;
   font-size: 15px;
+  background: #ffffff;
 }
 
 button {
@@ -69,6 +71,16 @@ button.secondary {
   color: #17202a;
 }
 
+button.active {
+  background: #111827;
+  color: #ffffff;
+}
+
+button.danger {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -88,6 +100,7 @@ button.secondary {
 .header-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .summary-grid {
@@ -114,7 +127,8 @@ button.secondary {
   font-size: 30px;
 }
 
-.actions-card {
+.actions-card,
+.card {
   background: #ffffff;
   padding: 22px;
   border-radius: 18px;
@@ -122,17 +136,20 @@ button.secondary {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
 }
 
-.actions-card h2 {
+.actions-card h2,
+.card h2 {
   margin-top: 0;
 }
 
-.actions-card p {
+.actions-card p,
+.card p {
   color: #5f6c7b;
 }
 
 .button-row {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .content-grid {
@@ -153,6 +170,62 @@ button.secondary {
   margin-top: 0;
 }
 
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin: 0;
+}
+
+.page-header p {
+  margin: 6px 0 0;
+  color: #5f6c7b;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.form-grid h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-grid button[type="submit"] {
+  align-self: end;
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.info {
+  background: #e4edff;
+  color: #1f4fa3;
+  padding: 12px;
+  border-radius: 10px;
+  margin: 12px 0 24px;
+  font-weight: 600;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -164,10 +237,17 @@ td {
   padding: 12px;
   border-bottom: 1px solid #edf1f5;
   font-size: 14px;
+  vertical-align: middle;
 }
 
 th {
   color: #5f6c7b;
+}
+
+td button {
+  padding: 8px 10px;
+  margin-right: 8px;
+  font-size: 13px;
 }
 
 .badge {
@@ -187,6 +267,16 @@ th {
 .severity-high {
   background: #fff0cc;
   color: #8a5a00;
+}
+
+.severity-medium {
+  background: #e4edff;
+  color: #1f4fa3;
+}
+
+.severity-low {
+  background: #ddf7e8;
+  color: #126b36;
 }
 
 .status-open {
@@ -210,6 +300,7 @@ th {
   padding: 12px;
   border-radius: 10px;
   margin: 12px 0;
+  font-weight: 600;
 }
 
 @media (max-width: 1100px) {
@@ -219,6 +310,10 @@ th {
 
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -236,9 +331,22 @@ th {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .header {
+  .header,
+  .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1;
   }
 }

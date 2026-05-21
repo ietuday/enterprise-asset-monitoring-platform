@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "./App.css";
+import RulesPage from "./pages/RulesPage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
+  const [user, setUser] = useState(() => {
+    const storedUser = localStorage.getItem("user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
+  const [activePage, setActivePage] = useState("dashboard");
+
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin123");
 
@@ -14,14 +22,16 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [error, setError] = useState("");
 
-  const api = axios.create({
-    baseURL: API_BASE_URL,
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {},
-  });
+  const api = useMemo(() => {
+    return axios.create({
+      baseURL: API_BASE_URL,
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+  }, [token]);
 
   async function login(event) {
     event.preventDefault();
@@ -34,8 +44,14 @@ function App() {
       });
 
       const receivedToken = response.data.token;
+      const receivedUser = response.data.user;
+
       localStorage.setItem("token", receivedToken);
+      localStorage.setItem("user", JSON.stringify(receivedUser));
+
       setToken(receivedToken);
+      setUser(receivedUser);
+      setActivePage("dashboard");
     } catch (err) {
       setError(err.response?.data?.error || "Login failed");
     }
@@ -43,14 +59,20 @@ function App() {
 
   function logout() {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
+
     setToken("");
+    setUser(null);
     setSummary(null);
     setAssets([]);
     setAlerts([]);
+    setActivePage("dashboard");
   }
 
   async function loadDashboard() {
     try {
+      setError("");
+
       const [summaryRes, assetsRes, alertsRes] = await Promise.all([
         api.get("/api/reports/summary"),
         api.get("/api/assets"),
@@ -67,6 +89,8 @@ function App() {
 
   async function sendAbnormalTelemetry() {
     try {
+      setError("");
+
       await api.post("/api/telemetry", {
         assetId: "motor-101",
         temperature: 96,
@@ -83,6 +107,8 @@ function App() {
 
   async function sendNormalTelemetry() {
     try {
+      setError("");
+
       await api.post("/api/telemetry", {
         assetId: "motor-101",
         temperature: 70,
@@ -98,18 +124,18 @@ function App() {
   }
 
   useEffect(() => {
-    if (token) {
+    if (token && activePage === "dashboard") {
       loadDashboard();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, activePage]);
 
   if (!token) {
     return (
       <div className="page">
         <div className="login-card">
           <h1>Enterprise Asset Monitoring</h1>
-          <p>Login to monitor assets, telemetry, alerts, and reports.</p>
+          <p>Login to monitor assets, telemetry, alerts, reports, and dynamic rules.</p>
 
           <form onSubmit={login}>
             <label>Email</label>
@@ -141,17 +167,63 @@ function App() {
       <header className="header">
         <div>
           <h1>Enterprise Asset Monitoring</h1>
-          <p>Secure microservices dashboard</p>
+          <p>
+            Secure microservices dashboard
+            {user?.role ? ` · ${user.name} · ${user.role}` : ""}
+          </p>
         </div>
 
         <div className="header-actions">
-          <button onClick={loadDashboard}>Refresh</button>
+          <button
+            className={activePage === "dashboard" ? "active" : "secondary"}
+            onClick={() => setActivePage("dashboard")}
+          >
+            Dashboard
+          </button>
+
+          <button
+            className={activePage === "rules" ? "active" : "secondary"}
+            onClick={() => setActivePage("rules")}
+          >
+            Rules
+          </button>
+
+          {activePage === "dashboard" && (
+            <button onClick={loadDashboard}>Refresh</button>
+          )}
+
           <button className="secondary" onClick={logout}>
             Logout
           </button>
         </div>
       </header>
 
+      {activePage === "rules" ? (
+        <RulesPage />
+      ) : (
+        <DashboardPage
+          summary={summary}
+          assets={assets}
+          alerts={alerts}
+          error={error}
+          sendAbnormalTelemetry={sendAbnormalTelemetry}
+          sendNormalTelemetry={sendNormalTelemetry}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardPage({
+  summary,
+  assets,
+  alerts,
+  error,
+  sendAbnormalTelemetry,
+  sendNormalTelemetry,
+}) {
+  return (
+    <>
       {error && <div className="error">{error}</div>}
 
       {summary && (
@@ -167,7 +239,9 @@ function App() {
 
       <section className="actions-card">
         <h2>Telemetry Simulator</h2>
-        <p>Use these buttons to test alert creation and auto-resolution for motor-101.</p>
+        <p>
+          Use these buttons to test alert creation and auto-resolution for motor-101.
+        </p>
 
         <div className="button-row">
           <button onClick={sendAbnormalTelemetry}>
@@ -205,6 +279,12 @@ function App() {
                   </td>
                 </tr>
               ))}
+
+              {assets.length === 0 && (
+                <tr>
+                  <td colSpan="5">No assets found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -240,11 +320,17 @@ function App() {
                   </td>
                 </tr>
               ))}
+
+              {alerts.length === 0 && (
+                <tr>
+                  <td colSpan="5">No alerts found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </section>
-    </div>
+    </>
   );
 }
 
