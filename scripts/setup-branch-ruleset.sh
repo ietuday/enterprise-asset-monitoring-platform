@@ -8,6 +8,8 @@ BRANCH_PATTERN="${BRANCH_PATTERN:-master}"
 RULESET_NAME="${RULESET_NAME:-Protect master}"
 ENFORCEMENT="${ENFORCEMENT:-active}"
 
+RULESET_FILE="./branch-ruleset.json"
+
 echo "Setting up GitHub branch ruleset"
 echo "Repository: $OWNER/$REPO"
 echo "Branch pattern: $BRANCH_PATTERN"
@@ -17,7 +19,7 @@ echo ""
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "GitHub CLI 'gh' is not installed."
-  echo "Install it from: https://cli.github.com/"
+  echo "Install it first: https://cli.github.com/"
   exit 1
 fi
 
@@ -28,18 +30,18 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 REPO_ID=$(gh api "repos/$OWNER/$REPO" --jq '.id')
-
 echo "Repository ID: $REPO_ID"
 echo ""
 
 EXISTING_RULESET_ID=$(gh api "repos/$OWNER/$REPO/rulesets" \
   --jq ".[] | select(.name == \"$RULESET_NAME\") | .id" || true)
 
-if [[ -n "$EXISTING_RULESET_ID" ]]; then
+if [[ -n "${EXISTING_RULESET_ID:-}" ]]; then
   echo "Ruleset already exists: $RULESET_NAME"
   echo "Ruleset ID: $EXISTING_RULESET_ID"
   echo ""
-  read -r -p "Do you want to delete and recreate it? [y/N]: " confirm
+
+  read -r -p "Delete and recreate it? [y/N]: " confirm
 
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
     gh api \
@@ -53,7 +55,7 @@ if [[ -n "$EXISTING_RULESET_ID" ]]; then
   fi
 fi
 
-cat > /tmp/branch-ruleset.json <<EOF
+cat > "$RULESET_FILE" <<EOF
 {
   "name": "$RULESET_NAME",
   "target": "branch",
@@ -88,7 +90,6 @@ cat > /tmp/branch-ruleset.json <<EOF
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": true,
-        "automatic_copilot_code_review_enabled": true,
         "allowed_merge_methods": [
           "merge",
           "squash",
@@ -142,16 +143,25 @@ cat > /tmp/branch-ruleset.json <<EOF
 }
 EOF
 
+if [[ ! -f "$RULESET_FILE" ]]; then
+  echo "Ruleset JSON file was not created."
+  exit 1
+fi
+
+echo "Ruleset JSON created at: $RULESET_FILE"
+echo ""
+
 echo "Creating ruleset..."
 
-gh api \
+RULESET_ID=$(gh api \
   --method POST \
   "repos/$OWNER/$REPO/rulesets" \
-  --input /tmp/branch-ruleset.json \
-  --jq '.id'
+  --input "$RULESET_FILE" \
+  --jq '.id')
 
 echo ""
 echo "Ruleset created successfully."
+echo "Ruleset ID: $RULESET_ID"
 echo ""
 echo "Open:"
-echo "https://github.com/$OWNER/$REPO/settings/rules"
+echo "https://github.com/$OWNER/$REPO/settings/rules"   
