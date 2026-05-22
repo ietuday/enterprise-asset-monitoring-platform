@@ -1,0 +1,44 @@
+# Global owner
+* @ietuday
+
+# GitHub configuration
+.github/ @ietuday
+.github/workflows/ @ietuday
+.github/ISSUE_TEMPLATE/ @ietuday
+.github/dependabot.yml @ietuday
+.github/pull_request_template.md @ietuday
+.github/CODEOWNERS @ietuday
+
+# CI/CD and automation scripts
+scripts/ @ietuday
+Makefile @ietuday
+
+# Backend Go services
+services/asset-service/ @ietuday
+services/telemetry-service/ @ietuday
+services/alert-service/ @ietuday
+services/rule-service/ @ietuday
+
+# Python service
+services/report-service/ @ietuday
+
+# Node.js services
+services/api-gateway/ @ietuday
+services/auth-service/ @ietuday
+
+# Frontend
+web/dashboard/ @ietuday
+
+# Infrastructure and monitoring
+docker-compose.yml @ietuday
+.env.example @ietuday
+infra/ @ietuday
+infra/prometheus/ @ietuday
+infra/alertmanager/ @ietuday
+infra/grafana/ @ietuday
+
+# Documentation
+README.md @ietuday
+CONTRIBUTING.md @ietuday
+SECURITY.md @ietuday
+docs/ @ietuday
