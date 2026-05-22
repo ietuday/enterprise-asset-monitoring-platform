@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create release notes
+        run: |
+          cat > RELEASE_NOTES.md <<'EOF'
+          ## Enterprise Asset Monitoring Platform
+
+          This release includes:
+
+          - Microservices-based asset monitoring platform
+          - JWT authentication and RBAC
+          - Asset, telemetry, alert, report, and rule services
+          - Dynamic Monitoring Rules
+          - Prometheus rule generation
+          - Alertmanager webhook flow
+          - Grafana and Prometheus observability
+          - Docker Compose local deployment
+          - React dashboard
+          - CI pipeline
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
