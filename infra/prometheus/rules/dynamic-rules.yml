@@ -52,3 +52,13 @@ groups:
           description: "Dynamic rule Dynamic Device Down triggered for asset {{ $labels.asset_id }}"
           asset_id: "{{ $labels.asset_id }}"
           alert_name: "Dynamic Device Down"
+      - alert: E2EDynamicHighCPU1779425167
+        expr: asset_cpu_usage_percent > 90.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "E2E Dynamic High CPU 1779425167"
+          description: "Dynamic rule E2E Dynamic High CPU 1779425167 triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Dynamic High CPU 1779425167"
