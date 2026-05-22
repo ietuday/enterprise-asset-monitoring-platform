@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 
 	"rule-service/internal/models"
 
@@ -175,4 +176,116 @@ func (r *RuleRepository) ListEnabled(ctx context.Context) ([]models.Rule, error)
 	}
 
 	return rules, rows.Err()
+}
+
+func (r *RuleRepository) CreateAuditLog(
+	ctx context.Context,
+	ruleID *int64,
+	action string,
+	ruleName string,
+	oldValue any,
+	newValue any,
+	changedBy string,
+) error {
+	var oldJSON []byte
+	var newJSON []byte
+	var err error
+
+	if oldValue != nil {
+		oldJSON, err = json.Marshal(oldValue)
+		if err != nil {
+			return err
+		}
+	}
+
+	if newValue != nil {
+		newJSON, err = json.Marshal(newValue)
+		if err != nil {
+			return err
+		}
+	}
+
+	query := `
+	INSERT INTO rule_audit_logs (rule_id, action, rule_name, old_value, new_value, changed_by)
+	VALUES ($1, $2, $3, $4, $5, $6);
+	`
+
+	_, err = r.pool.Exec(ctx, query, ruleID, action, ruleName, oldJSON, newJSON, changedBy)
+	return err
+}
+
+func (r *RuleRepository) ListAuditLogs(ctx context.Context) ([]models.RuleAuditLog, error) {
+	query := `
+	SELECT id, rule_id, action, rule_name, old_value, new_value, changed_by, created_at
+	FROM rule_audit_logs
+	ORDER BY created_at DESC
+	LIMIT 100;
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	logs := make([]models.RuleAuditLog, 0)
+
+	for rows.Next() {
+		var item models.RuleAuditLog
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.RuleID,
+			&item.Action,
+			&item.RuleName,
+			&item.OldValue,
+			&item.NewValue,
+			&item.ChangedBy,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		logs = append(logs, item)
+	}
+
+	return logs, rows.Err()
+}
+
+func (r *RuleRepository) ListAuditLogsByRuleID(ctx context.Context, ruleID string) ([]models.RuleAuditLog, error) {
+	query := `
+	SELECT id, rule_id, action, rule_name, old_value, new_value, changed_by, created_at
+	FROM rule_audit_logs
+	WHERE rule_id = $1
+	ORDER BY created_at DESC;
+	`
+
+	rows, err := r.pool.Query(ctx, query, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	logs := make([]models.RuleAuditLog, 0)
+
+	for rows.Next() {
+		var item models.RuleAuditLog
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.RuleID,
+			&item.Action,
+			&item.RuleName,
+			&item.OldValue,
+			&item.NewValue,
+			&item.ChangedBy,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		logs = append(logs, item)
+	}
+
+	return logs, rows.Err()
 }

@@ -32,3 +32,13 @@ groups:
           description: "Dynamic rule Dynamic High CPU triggered for asset {{ $labels.asset_id }}"
           asset_id: "{{ $labels.asset_id }}"
           alert_name: "Dynamic High CPU"
+      - alert: AuditTestHighCPU
+        expr: asset_cpu_usage_percent > 85.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "Audit Test High CPU"
+          description: "Dynamic rule Audit Test High CPU triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "Audit Test High CPU"

@@ -29,6 +29,17 @@ func Init(ctx context.Context, pool *pgxpool.Pool) error {
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
+
+	CREATE TABLE IF NOT EXISTS rule_audit_logs (
+		id BIGSERIAL PRIMARY KEY,
+		rule_id BIGINT,
+		action TEXT NOT NULL,
+		rule_name TEXT,
+		old_value JSONB,
+		new_value JSONB,
+		changed_by TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
 	`
 
 	_, err := pool.Exec(ctx, query)

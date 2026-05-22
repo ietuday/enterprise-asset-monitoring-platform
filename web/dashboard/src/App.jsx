@@ -22,13 +22,21 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [error, setError] = useState("");
 
+  const [telemetryForm, setTelemetryForm] = useState({
+    assetId: "dynamic-ui-motor-101",
+    temperature: 70,
+    cpu: 95,
+    memory: 50,
+    status: "RUNNING",
+  });
+
   const api = useMemo(() => {
     return axios.create({
       baseURL: API_BASE_URL,
       headers: token
         ? {
-            Authorization: `Bearer ${token}`,
-          }
+          Authorization: `Bearer ${token}`,
+        }
         : {},
     });
   }, [token]);
@@ -84,6 +92,35 @@ function App() {
       setAlerts(alertsRes.data);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load dashboard");
+    }
+  }
+
+  function handleTelemetryChange(event) {
+    const { name, value } = event.target;
+
+    setTelemetryForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function sendCustomTelemetry(event) {
+    event.preventDefault();
+
+    try {
+      setError("");
+
+      await api.post("/api/telemetry", {
+        assetId: telemetryForm.assetId,
+        temperature: Number(telemetryForm.temperature),
+        cpu: Number(telemetryForm.cpu),
+        memory: Number(telemetryForm.memory),
+        status: telemetryForm.status,
+      });
+
+      await loadDashboard();
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to send telemetry");
     }
   }
 
@@ -206,6 +243,9 @@ function App() {
           assets={assets}
           alerts={alerts}
           error={error}
+          telemetryForm={telemetryForm}
+          handleTelemetryChange={handleTelemetryChange}
+          sendCustomTelemetry={sendCustomTelemetry}
           sendAbnormalTelemetry={sendAbnormalTelemetry}
           sendNormalTelemetry={sendNormalTelemetry}
         />
@@ -219,6 +259,9 @@ function DashboardPage({
   assets,
   alerts,
   error,
+  telemetryForm,
+  handleTelemetryChange,
+  sendCustomTelemetry,
   sendAbnormalTelemetry,
   sendNormalTelemetry,
 }) {
@@ -240,10 +283,70 @@ function DashboardPage({
       <section className="actions-card">
         <h2>Telemetry Simulator</h2>
         <p>
-          Use these buttons to test alert creation and auto-resolution for motor-101.
+          Send custom telemetry to test static and dynamic monitoring rules.
         </p>
 
-        <div className="button-row">
+        <form className="telemetry-form" onSubmit={sendCustomTelemetry}>
+          <label>
+            Asset ID
+            <input
+              name="assetId"
+              value={telemetryForm.assetId}
+              onChange={handleTelemetryChange}
+              required
+            />
+          </label>
+
+          <label>
+            Temperature
+            <input
+              name="temperature"
+              type="number"
+              value={telemetryForm.temperature}
+              onChange={handleTelemetryChange}
+              required
+            />
+          </label>
+
+          <label>
+            CPU
+            <input
+              name="cpu"
+              type="number"
+              value={telemetryForm.cpu}
+              onChange={handleTelemetryChange}
+              required
+            />
+          </label>
+
+          <label>
+            Memory
+            <input
+              name="memory"
+              type="number"
+              value={telemetryForm.memory}
+              onChange={handleTelemetryChange}
+              required
+            />
+          </label>
+
+          <label>
+            Status
+            <select
+              name="status"
+              value={telemetryForm.status}
+              onChange={handleTelemetryChange}
+            >
+              <option value="RUNNING">RUNNING</option>
+              <option value="DOWN">DOWN</option>
+              <option value="UNKNOWN">UNKNOWN</option>
+            </select>
+          </label>
+
+          <button type="submit">Send Telemetry</button>
+        </form>
+
+        <div className="button-row quick-actions">
           <button onClick={sendAbnormalTelemetry}>
             Send Abnormal Temperature
           </button>
@@ -252,7 +355,6 @@ function DashboardPage({
           </button>
         </div>
       </section>
-
       <section className="content-grid">
         <div className="table-card">
           <h2>Assets</h2>

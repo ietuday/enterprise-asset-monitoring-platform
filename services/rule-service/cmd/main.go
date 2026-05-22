@@ -36,6 +36,8 @@ func main() {
 	r.Post("/rules", ruleHandler.CreateRule)
 	r.Get("/rules", ruleHandler.ListRules)
 	r.Get("/rules/enabled", ruleHandler.ListEnabledRules)
+	r.Get("/rules/history", ruleHandler.ListRuleAuditLogs)
+	r.Get("/rules/{id}/history", ruleHandler.ListRuleAuditLogsByRuleID)
 	r.Get("/rules/{id}", ruleHandler.GetRuleByID)
 	r.Put("/rules/{id}", ruleHandler.UpdateRule)
 	r.Delete("/rules/{id}", ruleHandler.DeleteRule)

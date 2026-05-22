@@ -40,14 +40,14 @@ func (h *RuleHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rule.Name == "" || rule.Metric == "" || rule.Operator == "" || rule.Severity == "" {
+	if !isValidRule(rule) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "name, metric, operator and severity are required",
 		})
 		return
 	}
 
-	if rule.Operator != ">" && rule.Operator != ">=" && rule.Operator != "<" && rule.Operator != "<=" && rule.Operator != "==" && rule.Operator != "!=" {
+	if !isSupportedOperator(rule.Operator) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "unsupported operator",
 		})
@@ -59,6 +59,20 @@ func (h *RuleHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 			"error": err.Error(),
 		})
 		return
+	}
+
+	ruleID := rule.ID
+
+	if err := h.repo.CreateAuditLog(
+		r.Context(),
+		&ruleID,
+		"CREATED",
+		rule.Name,
+		nil,
+		rule,
+		changedBy(r),
+	); err != nil {
+		log.Printf("failed to create rule audit log: %v", err)
 	}
 
 	h.regeneratePrometheusRules(r)
@@ -114,6 +128,21 @@ func (h *RuleHandler) GetRuleByID(w http.ResponseWriter, r *http.Request) {
 func (h *RuleHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
+	oldRule, err := h.repo.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "rule not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
 	var rule models.Rule
 
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
@@ -123,9 +152,16 @@ func (h *RuleHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rule.Name == "" || rule.Metric == "" || rule.Operator == "" || rule.Severity == "" {
+	if !isValidRule(rule) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "name, metric, operator and severity are required",
+		})
+		return
+	}
+
+	if !isSupportedOperator(rule.Operator) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "unsupported operator",
 		})
 		return
 	}
@@ -144,14 +180,45 @@ func (h *RuleHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rule.ID = 0
+	rule.ID = oldRule.ID
+	rule.CreatedAt = oldRule.CreatedAt
+
+	ruleID := oldRule.ID
+
+	if err := h.repo.CreateAuditLog(
+		r.Context(),
+		&ruleID,
+		"UPDATED",
+		rule.Name,
+		oldRule,
+		rule,
+		changedBy(r),
+	); err != nil {
+		log.Printf("failed to create rule audit log: %v", err)
+	}
 
 	h.regeneratePrometheusRules(r)
+
 	writeJSON(w, http.StatusOK, rule)
 }
 
 func (h *RuleHandler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	oldRule, err := h.repo.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "rule not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
 
 	if err := h.repo.Delete(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -160,10 +227,51 @@ func (h *RuleHandler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ruleID := oldRule.ID
+
+	if err := h.repo.CreateAuditLog(
+		r.Context(),
+		&ruleID,
+		"DELETED",
+		oldRule.Name,
+		oldRule,
+		nil,
+		changedBy(r),
+	); err != nil {
+		log.Printf("failed to create rule audit log: %v", err)
+	}
+
 	h.regeneratePrometheusRules(r)
+
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "rule deleted successfully",
 	})
+}
+
+func (h *RuleHandler) ListRuleAuditLogs(w http.ResponseWriter, r *http.Request) {
+	logs, err := h.repo.ListAuditLogs(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, logs)
+}
+
+func (h *RuleHandler) ListRuleAuditLogsByRuleID(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	logs, err := h.repo.ListAuditLogsByRuleID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, logs)
 }
 
 func (h *RuleHandler) regeneratePrometheusRules(r *http.Request) {
@@ -189,6 +297,31 @@ func (h *RuleHandler) regeneratePrometheusRules(r *http.Request) {
 	}
 
 	log.Printf("prometheus dynamic rules regenerated and reloaded")
+}
+
+func changedBy(r *http.Request) string {
+	email := r.Header.Get("X-User-Email")
+	if email == "" {
+		return "system"
+	}
+
+	return email
+}
+
+func isValidRule(rule models.Rule) bool {
+	return rule.Name != "" &&
+		rule.Metric != "" &&
+		rule.Operator != "" &&
+		rule.Severity != ""
+}
+
+func isSupportedOperator(operator string) bool {
+	switch operator {
+	case ">", ">=", "<", "<=", "==", "!=":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, data any) {

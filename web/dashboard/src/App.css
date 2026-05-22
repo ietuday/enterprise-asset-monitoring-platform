@@ -303,6 +303,35 @@ td button {
   font-weight: 600;
 }
 
+.telemetry-form {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.telemetry-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-actions {
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .telemetry-form {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .telemetry-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
   .summary-grid {
     grid-template-columns: repeat(3, 1fr);
