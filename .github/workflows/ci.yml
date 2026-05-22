@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+      - master
       - develop
   pull_request:
     branches:
       - main
+      - master
       - develop
 
 jobs:
@@ -21,6 +23,7 @@ jobs:
           - asset-service
           - telemetry-service
           - alert-service
+          - rule-service
 
     steps:
       - name: Checkout code
@@ -38,8 +41,12 @@ jobs:
       - name: Format check
         working-directory: services/${{ matrix.service }}
         run: |
-          gofmt -w .
-          git diff --exit-code
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Go files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Run tests
         working-directory: services/${{ matrix.service }}
@@ -123,8 +130,13 @@ jobs:
         run: npm run build
 
   docker-compose:
-    name: Docker Compose Validation
+    name: Docker Compose Validation and Build
     runs-on: ubuntu-latest
+    needs:
+      - go-services
+      - node-services
+      - report-service
+      - dashboard
 
     steps:
       - name: Checkout code
