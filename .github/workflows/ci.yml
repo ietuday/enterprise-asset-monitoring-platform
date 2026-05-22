@@ -54,7 +54,7 @@ jobs:
 
       - name: Build
         working-directory: services/${{ matrix.service }}
-        run: go build ./cmd
+        run: go build -o /tmp/${{ matrix.service }} ./cmd
 
   node-services:
     name: Node Services
