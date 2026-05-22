@@ -19,8 +19,8 @@ func NewRuleRepository(pool *pgxpool.Pool) *RuleRepository {
 
 func (r *RuleRepository) Create(ctx context.Context, rule *models.Rule) error {
 	query := `
-	INSERT INTO monitoring_rules (name, metric, operator, threshold, severity, enabled)
-	VALUES ($1, $2, $3, $4, $5, $6)
+	INSERT INTO monitoring_rules (name, metric, operator, threshold, value, severity, enabled)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)
 	RETURNING id, created_at, updated_at;
 	`
 
@@ -31,6 +31,7 @@ func (r *RuleRepository) Create(ctx context.Context, rule *models.Rule) error {
 		rule.Metric,
 		rule.Operator,
 		rule.Threshold,
+		rule.Value,
 		rule.Severity,
 		rule.Enabled,
 	).Scan(&rule.ID, &rule.CreatedAt, &rule.UpdatedAt)
@@ -38,7 +39,7 @@ func (r *RuleRepository) Create(ctx context.Context, rule *models.Rule) error {
 
 func (r *RuleRepository) List(ctx context.Context) ([]models.Rule, error) {
 	query := `
-	SELECT id, name, metric, operator, threshold, severity, enabled, created_at, updated_at
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
 	FROM monitoring_rules
 	ORDER BY id DESC;
 	`
@@ -60,6 +61,7 @@ func (r *RuleRepository) List(ctx context.Context) ([]models.Rule, error) {
 			&rule.Metric,
 			&rule.Operator,
 			&rule.Threshold,
+			&rule.Value,
 			&rule.Severity,
 			&rule.Enabled,
 			&rule.CreatedAt,
@@ -76,7 +78,7 @@ func (r *RuleRepository) List(ctx context.Context) ([]models.Rule, error) {
 
 func (r *RuleRepository) GetByID(ctx context.Context, id string) (*models.Rule, error) {
 	query := `
-	SELECT id, name, metric, operator, threshold, severity, enabled, created_at, updated_at
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
 	FROM monitoring_rules
 	WHERE id = $1;
 	`
@@ -89,6 +91,7 @@ func (r *RuleRepository) GetByID(ctx context.Context, id string) (*models.Rule, 
 		&rule.Metric,
 		&rule.Operator,
 		&rule.Threshold,
+		&rule.Value,
 		&rule.Severity,
 		&rule.Enabled,
 		&rule.CreatedAt,
@@ -109,10 +112,11 @@ func (r *RuleRepository) Update(ctx context.Context, id string, rule *models.Rul
 	    metric = $2,
 	    operator = $3,
 	    threshold = $4,
-	    severity = $5,
-	    enabled = $6,
+	    value = $5,
+	    severity = $6,
+	    enabled = $7,
 	    updated_at = NOW()
-	WHERE id = $7
+	WHERE id = $8
 	RETURNING updated_at;
 	`
 
@@ -123,6 +127,7 @@ func (r *RuleRepository) Update(ctx context.Context, id string, rule *models.Rul
 		rule.Metric,
 		rule.Operator,
 		rule.Threshold,
+		rule.Value,
 		rule.Severity,
 		rule.Enabled,
 		id,
@@ -141,7 +146,7 @@ func (r *RuleRepository) Delete(ctx context.Context, id string) error {
 
 func (r *RuleRepository) ListEnabled(ctx context.Context) ([]models.Rule, error) {
 	query := `
-	SELECT id, name, metric, operator, threshold, severity, enabled, created_at, updated_at
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
 	FROM monitoring_rules
 	WHERE enabled = true
 	ORDER BY id ASC;
@@ -164,6 +169,7 @@ func (r *RuleRepository) ListEnabled(ctx context.Context) ([]models.Rule, error)
 			&rule.Metric,
 			&rule.Operator,
 			&rule.Threshold,
+			&rule.Value,
 			&rule.Severity,
 			&rule.Enabled,
 			&rule.CreatedAt,

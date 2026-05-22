@@ -17,6 +17,8 @@ func metricName(metric string) string {
 		return "asset_cpu_usage_percent"
 	case "memory":
 		return "asset_memory_usage_percent"
+	case "status":
+		return "asset_status"
 	default:
 		return ""
 	}
@@ -50,7 +52,11 @@ func GenerateRulesYAML(rules []models.Rule) ([]byte, error) {
 		enabledRuleCount++
 
 		buffer.WriteString(fmt.Sprintf("      - alert: %s\n", alertName(rule.Name)))
-		buffer.WriteString(fmt.Sprintf("        expr: %s %s %.2f\n", promMetric, rule.Operator, rule.Threshold))
+		if rule.Metric == "status" {
+			buffer.WriteString(fmt.Sprintf("        expr: %s{status=\"%s\"} == 1\n", promMetric, rule.Value))
+		} else {
+			buffer.WriteString(fmt.Sprintf("        expr: %s %s %.2f\n", promMetric, rule.Operator, rule.Threshold))
+		}
 		buffer.WriteString("        for: 5s\n")
 		buffer.WriteString("        labels:\n")
 		buffer.WriteString(fmt.Sprintf("          severity: %s\n", strings.ToLower(rule.Severity)))

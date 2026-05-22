@@ -109,6 +109,8 @@ func (h *TelemetryHandler) CreateTelemetry(w http.ResponseWriter, r *http.Reques
 		telemetry.AssetID,
 	).Set(telemetry.Memory)
 
+	updateAssetStatusMetric(telemetry.AssetID, telemetry.Status)
+
 	// Dynamic rules are evaluated here for debug visibility.
 	// Actual Prometheus/Alertmanager alerting is handled by generated Prometheus rules.
 	h.evaluateDynamicRules(telemetry)
@@ -318,6 +320,32 @@ func (h *TelemetryHandler) evaluateDynamicRules(telemetry models.Telemetry) {
 	}
 
 	for _, rule := range rules {
+		if rule.Metric == "status" {
+			matched := false
+
+			switch rule.Operator {
+			case "==":
+				matched = telemetry.Status == rule.Value
+			case "!=":
+				matched = telemetry.Status != rule.Value
+			default:
+				log.Printf("unsupported operator for status rule: %s", rule.Operator)
+				continue
+			}
+
+			log.Printf(
+				"dynamic rule evaluated asset_id=%s rule=%q metric=status value=%s operator=%s expected=%s matched=%t",
+				telemetry.AssetID,
+				rule.Name,
+				telemetry.Status,
+				rule.Operator,
+				rule.Value,
+				matched,
+			)
+
+			continue
+		}
+
 		value, ok := telemetryMetricValue(telemetry, rule.Metric)
 		if !ok {
 			log.Printf("unsupported dynamic rule metric: %s", rule.Metric)
@@ -336,6 +364,19 @@ func (h *TelemetryHandler) evaluateDynamicRules(telemetry models.Telemetry) {
 			rule.Threshold,
 			matched,
 		)
+	}
+}
+
+func updateAssetStatusMetric(assetID string, currentStatus string) {
+	knownStatuses := []string{"RUNNING", "DOWN", "UNKNOWN"}
+
+	for _, status := range knownStatuses {
+		value := 0.0
+		if status == currentStatus {
+			value = 1
+		}
+
+		metrics.AssetStatus.WithLabelValues(assetID, status).Set(value)
 	}
 }
 

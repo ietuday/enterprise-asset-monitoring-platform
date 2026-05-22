@@ -61,6 +61,13 @@ func (h *RuleHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !isSupportedMetric(rule.Metric) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "unsupported metric",
+		})
+		return
+	}
+
 	ruleID := rule.ID
 
 	if err := h.repo.CreateAuditLog(
@@ -176,6 +183,13 @@ func (h *RuleHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
+		})
+		return
+	}
+
+	if !isSupportedMetric(rule.Metric) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "unsupported metric",
 		})
 		return
 	}
@@ -309,10 +323,24 @@ func changedBy(r *http.Request) string {
 }
 
 func isValidRule(rule models.Rule) bool {
-	return rule.Name != "" &&
-		rule.Metric != "" &&
-		rule.Operator != "" &&
-		rule.Severity != ""
+	if rule.Name == "" || rule.Metric == "" || rule.Operator == "" || rule.Severity == "" {
+		return false
+	}
+
+	if rule.Metric == "status" && rule.Value == "" {
+		return false
+	}
+
+	return true
+}
+
+func isSupportedMetric(metric string) bool {
+	switch metric {
+	case "temperature", "cpu", "memory", "status":
+		return true
+	default:
+		return false
+	}
 }
 
 func isSupportedOperator(operator string) bool {

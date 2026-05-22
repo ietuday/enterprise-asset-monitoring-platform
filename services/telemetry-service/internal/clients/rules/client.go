@@ -14,6 +14,7 @@ type Rule struct {
 	Metric    string    `json:"metric"`
 	Operator  string    `json:"operator"`
 	Threshold float64   `json:"threshold"`
+	Value     string    `json:"value,omitempty"`
 	Severity  string    `json:"severity"`
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`

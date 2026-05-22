@@ -34,9 +34,18 @@ var AssetMemoryUsagePercent = prometheus.NewGaugeVec(
 	[]string{"asset_id"},
 )
 
+var AssetStatus = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "asset_status",
+		Help: "Latest asset status. Label status is set to 1 for current status and 0 for other known statuses.",
+	},
+	[]string{"asset_id", "status"},
+)
+
 func Register() {
 	prometheus.MustRegister(TelemetryReceivedTotal)
 	prometheus.MustRegister(AssetTemperatureCelsius)
 	prometheus.MustRegister(AssetCPUUsagePercent)
 	prometheus.MustRegister(AssetMemoryUsagePercent)
+	prometheus.MustRegister(AssetStatus)
 }

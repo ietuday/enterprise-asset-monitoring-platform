@@ -23,12 +23,16 @@ func Init(ctx context.Context, pool *pgxpool.Pool) error {
 		name TEXT NOT NULL,
 		metric TEXT NOT NULL,
 		operator TEXT NOT NULL,
-		threshold DOUBLE PRECISION NOT NULL,
+		threshold DOUBLE PRECISION NOT NULL DEFAULT 0,
+		value TEXT,
 		severity TEXT NOT NULL,
 		enabled BOOLEAN NOT NULL DEFAULT true,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
+
+	ALTER TABLE monitoring_rules
+	ADD COLUMN IF NOT EXISTS value TEXT;
 
 	CREATE TABLE IF NOT EXISTS rule_audit_logs (
 		id BIGSERIAL PRIMARY KEY,

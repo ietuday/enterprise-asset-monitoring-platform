@@ -12,6 +12,7 @@ const emptyRule = {
   metric: "cpu",
   operator: ">",
   threshold: 90,
+  value: "",
   severity: "HIGH",
   enabled: true,
 };
@@ -32,6 +33,7 @@ export default function RulesPage() {
     try {
       setLoading(true);
       setError("");
+
       const data = await getRules();
       setRules(data);
     } catch (err) {
@@ -45,6 +47,7 @@ export default function RulesPage() {
     try {
       setHistoryLoading(true);
       setError("");
+
       const data = await getRuleHistory();
       setHistory(data);
       setShowHistory(true);
@@ -70,10 +73,39 @@ export default function RulesPage() {
   function handleChange(event) {
     const { name, value, type, checked } = event.target;
 
-    setForm((current) => ({
-      ...current,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    setForm((current) => {
+      const updated = {
+        ...current,
+        [name]: type === "checkbox" ? checked : value,
+      };
+
+      if (name === "metric") {
+        if (value === "status") {
+          updated.operator = "==";
+          updated.threshold = 0;
+          updated.value = "DOWN";
+          updated.severity = "CRITICAL";
+        } else {
+          updated.operator = ">";
+          updated.threshold = current.threshold || 90;
+          updated.value = "";
+        }
+      }
+
+      return updated;
+    });
+  }
+
+  function buildRulePayload(source) {
+    return {
+      name: source.name,
+      metric: source.metric,
+      operator: source.operator,
+      threshold: source.metric === "status" ? 0 : Number(source.threshold),
+      value: source.metric === "status" ? source.value : "",
+      severity: source.severity,
+      enabled: source.enabled,
+    };
   }
 
   async function handleCreate(event) {
@@ -82,10 +114,7 @@ export default function RulesPage() {
     try {
       setError("");
 
-      await createRule({
-        ...form,
-        threshold: Number(form.threshold),
-      });
+      await createRule(buildRulePayload(form));
 
       setForm(emptyRule);
       await refreshAfterChange();
@@ -99,11 +128,7 @@ export default function RulesPage() {
       setError("");
 
       await updateRule(rule.id, {
-        name: rule.name,
-        metric: rule.metric,
-        operator: rule.operator,
-        threshold: Number(rule.threshold),
-        severity: rule.severity,
+        ...buildRulePayload(rule),
         enabled: !rule.enabled,
       });
 
@@ -119,6 +144,7 @@ export default function RulesPage() {
 
     try {
       setError("");
+
       await deleteRule(id);
       await refreshAfterChange();
     } catch (err) {
@@ -154,7 +180,11 @@ export default function RulesPage() {
               name="name"
               value={form.name}
               onChange={handleChange}
-              placeholder="Dynamic High CPU"
+              placeholder={
+                form.metric === "status"
+                  ? "Dynamic Device Down"
+                  : "Dynamic High CPU"
+              }
               required
             />
           </label>
@@ -165,31 +195,57 @@ export default function RulesPage() {
               <option value="temperature">temperature</option>
               <option value="cpu">cpu</option>
               <option value="memory">memory</option>
+              <option value="status">status</option>
             </select>
           </label>
 
           <label>
             Operator
             <select name="operator" value={form.operator} onChange={handleChange}>
-              <option value=">">{">"}</option>
-              <option value=">=">{">="}</option>
-              <option value="<">{"<"}</option>
-              <option value="<=">{"<="}</option>
-              <option value="==">{"=="}</option>
-              <option value="!=">{"!="}</option>
+              {form.metric === "status" ? (
+                <>
+                  <option value="==">{"=="}</option>
+                  <option value="!=">{"!="}</option>
+                </>
+              ) : (
+                <>
+                  <option value=">">{">"}</option>
+                  <option value=">=">{">="}</option>
+                  <option value="<">{"<"}</option>
+                  <option value="<=">{"<="}</option>
+                  <option value="==">{"=="}</option>
+                  <option value="!=">{"!="}</option>
+                </>
+              )}
             </select>
           </label>
 
-          <label>
-            Threshold
-            <input
-              name="threshold"
-              type="number"
-              value={form.threshold}
-              onChange={handleChange}
-              required
-            />
-          </label>
+          {form.metric === "status" ? (
+            <label>
+              Value
+              <select
+                name="value"
+                value={form.value}
+                onChange={handleChange}
+                required
+              >
+                <option value="DOWN">DOWN</option>
+                <option value="RUNNING">RUNNING</option>
+                <option value="UNKNOWN">UNKNOWN</option>
+              </select>
+            </label>
+          ) : (
+            <label>
+              Threshold
+              <input
+                name="threshold"
+                type="number"
+                value={form.threshold}
+                onChange={handleChange}
+                required
+              />
+            </label>
+          )}
 
           <label>
             Severity
@@ -233,12 +289,14 @@ export default function RulesPage() {
                 <th>Metric</th>
                 <th>Operator</th>
                 <th>Threshold</th>
+                <th>Value</th>
                 <th>Severity</th>
                 <th>Enabled</th>
                 <th>Updated</th>
                 {isAdmin && <th>Actions</th>}
               </tr>
             </thead>
+
             <tbody>
               {rules.map((rule) => (
                 <tr key={rule.id}>
@@ -246,15 +304,18 @@ export default function RulesPage() {
                   <td>{rule.name}</td>
                   <td>{rule.metric}</td>
                   <td>{rule.operator}</td>
-                  <td>{rule.threshold}</td>
+                  <td>{rule.metric === "status" ? "-" : rule.threshold}</td>
+                  <td>{rule.metric === "status" ? rule.value || "-" : "-"}</td>
                   <td>{rule.severity}</td>
                   <td>{rule.enabled ? "Yes" : "No"}</td>
                   <td>{new Date(rule.updated_at).toLocaleString()}</td>
+
                   {isAdmin && (
                     <td>
                       <button onClick={() => handleToggle(rule)}>
                         {rule.enabled ? "Disable" : "Enable"}
                       </button>
+
                       <button
                         className="danger"
                         onClick={() => handleDelete(rule.id)}
@@ -268,7 +329,7 @@ export default function RulesPage() {
 
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8}>No rules found.</td>
+                  <td colSpan={isAdmin ? 10 : 9}>No rules found.</td>
                 </tr>
               )}
             </tbody>
@@ -288,6 +349,7 @@ export default function RulesPage() {
               <button className="secondary" onClick={loadHistory}>
                 Refresh History
               </button>
+
               <button className="secondary" onClick={() => setShowHistory(false)}>
                 Hide
               </button>
@@ -308,6 +370,7 @@ export default function RulesPage() {
                   <th>Created At</th>
                 </tr>
               </thead>
+
               <tbody>
                 {history.map((item) => (
                   <tr key={item.id}>

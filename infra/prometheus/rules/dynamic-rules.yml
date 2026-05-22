@@ -42,3 +42,13 @@ groups:
           description: "Dynamic rule Audit Test High CPU triggered for asset {{ $labels.asset_id }}"
           asset_id: "{{ $labels.asset_id }}"
           alert_name: "Audit Test High CPU"
+      - alert: DynamicDeviceDown
+        expr: asset_status{status="DOWN"} == 1
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dynamic Device Down"
+          description: "Dynamic rule Dynamic Device Down triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "Dynamic Device Down"
