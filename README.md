@@ -1,5 +1,8 @@
 # Enterprise Asset Monitoring Platform
 
+![CI](https://github.com/ietuday/enterprise-asset-monitoring-platform/actions/workflows/ci.yml/badge.svg)
+
+
 An enterprise-grade microservices platform for monitoring assets, collecting telemetry, evaluating dynamic rules, generating alerts, producing reports, and visualizing system health.
 
 This project demonstrates a production-style backend architecture using Go, Node.js, Python FastAPI, React, PostgreSQL, Prometheus, Alertmanager, Grafana, JWT authentication, RBAC, audit logging, Docker Compose, and dynamic monitoring rules.
