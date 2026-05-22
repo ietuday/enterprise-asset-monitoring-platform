@@ -47,3 +47,19 @@ export async function deleteRule(id) {
 
   return response.data;
 }
+
+export async function getRuleHistory() {
+  const response = await axios.get(`${API_BASE_URL}/api/rules/history`, {
+    headers: authHeaders(),
+  });
+
+  return response.data;
+}
+
+export async function getRuleHistoryById(id) {
+  const response = await axios.get(`${API_BASE_URL}/api/rules/${id}/history`, {
+    headers: authHeaders(),
+  });
+
+  return response.data;
+}

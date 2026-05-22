@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { createRule, deleteRule, getRules, updateRule } from "../api/rulesApi";
+import {
+  createRule,
+  deleteRule,
+  getRuleHistory,
+  getRules,
+  updateRule,
+} from "../api/rulesApi";
 
 const emptyRule = {
   name: "",
@@ -14,7 +20,10 @@ export default function RulesPage() {
   const [rules, setRules] = useState([]);
   const [form, setForm] = useState(emptyRule);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "ADMIN";
@@ -29,6 +38,28 @@ export default function RulesPage() {
       setError(err.response?.data?.error || "Failed to load rules");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      setHistoryLoading(true);
+      setError("");
+      const data = await getRuleHistory();
+      setHistory(data);
+      setShowHistory(true);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to load rule history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function refreshAfterChange() {
+    await loadRules();
+
+    if (showHistory) {
+      await loadHistory();
     }
   }
 
@@ -57,7 +88,7 @@ export default function RulesPage() {
       });
 
       setForm(emptyRule);
-      await loadRules();
+      await refreshAfterChange();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to create rule");
     }
@@ -76,7 +107,7 @@ export default function RulesPage() {
         enabled: !rule.enabled,
       });
 
-      await loadRules();
+      await refreshAfterChange();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to update rule");
     }
@@ -89,22 +120,26 @@ export default function RulesPage() {
     try {
       setError("");
       await deleteRule(id);
-      await loadRules();
+      await refreshAfterChange();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to delete rule");
     }
   }
 
   return (
-    <div className="page">
+    <div>
       <div className="page-header">
         <div>
           <h1>Dynamic Monitoring Rules</h1>
-          <p>
-            Manage DB-driven rules that generate Prometheus alert rules.
-          </p>
+          <p>Manage DB-driven rules that generate Prometheus alert rules.</p>
         </div>
-        <button onClick={loadRules}>Refresh</button>
+
+        <div className="button-row">
+          <button onClick={loadRules}>Refresh</button>
+          <button className="secondary" onClick={loadHistory}>
+            History
+          </button>
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -181,9 +216,7 @@ export default function RulesPage() {
       )}
 
       {!isAdmin && (
-        <div className="info">
-          You have read-only access to monitoring rules.
-        </div>
+        <div className="info">You have read-only access to monitoring rules.</div>
       )}
 
       <div className="card">
@@ -222,7 +255,10 @@ export default function RulesPage() {
                       <button onClick={() => handleToggle(rule)}>
                         {rule.enabled ? "Disable" : "Enable"}
                       </button>
-                      <button className="danger" onClick={() => handleDelete(rule.id)}>
+                      <button
+                        className="danger"
+                        onClick={() => handleDelete(rule.id)}
+                      >
                         Delete
                       </button>
                     </td>
@@ -239,6 +275,65 @@ export default function RulesPage() {
           </table>
         )}
       </div>
+
+      {showHistory && (
+        <div className="card">
+          <div className="page-header">
+            <div>
+              <h2>Rule Audit History</h2>
+              <p>Recent rule create, update, and delete activities.</p>
+            </div>
+
+            <div className="button-row">
+              <button className="secondary" onClick={loadHistory}>
+                Refresh History
+              </button>
+              <button className="secondary" onClick={() => setShowHistory(false)}>
+                Hide
+              </button>
+            </div>
+          </div>
+
+          {historyLoading ? (
+            <p>Loading history...</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Rule ID</th>
+                  <th>Action</th>
+                  <th>Rule Name</th>
+                  <th>Changed By</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.rule_id || "-"}</td>
+                    <td>
+                      <span className={`badge action-${item.action.toLowerCase()}`}>
+                        {item.action}
+                      </span>
+                    </td>
+                    <td>{item.rule_name}</td>
+                    <td>{item.changed_by || "system"}</td>
+                    <td>{new Date(item.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+
+                {history.length === 0 && (
+                  <tr>
+                    <td colSpan="6">No rule history found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 }

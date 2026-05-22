@@ -320,6 +320,21 @@ td button {
   margin-top: 16px;
 }
 
+.action-created {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.action-updated {
+  background: #e4edff;
+  color: #1f4fa3;
+}
+
+.action-deleted {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
 @media (max-width: 1100px) {
   .telemetry-form {
     grid-template-columns: repeat(3, 1fr);
