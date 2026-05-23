@@ -309,3 +309,142 @@ func (r *RuleRepository) ListAuditLogsByRuleID(ctx context.Context, ruleID strin
 
 	return logs, rows.Err()
 }
+
+func (r *RuleRepository) CreateRuleVersion(ctx context.Context, rule *models.Rule, createdBy string) error {
+	query := `
+	INSERT INTO rule_versions (
+		rule_id,
+		version,
+		name,
+		metric,
+		operator,
+		threshold,
+		value,
+		severity,
+		enabled,
+		status,
+		created_by
+	)
+	VALUES (
+		$1,
+		COALESCE((SELECT MAX(version) + 1 FROM rule_versions WHERE rule_id = $1), 1),
+		$2, $3, $4, $5, $6, $7, $8, $9, $10
+	);
+	`
+
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		rule.ID,
+		rule.Name,
+		rule.Metric,
+		rule.Operator,
+		rule.Threshold,
+		rule.Value,
+		rule.Severity,
+		rule.Enabled,
+		rule.Status,
+		createdBy,
+	)
+
+	return err
+}
+
+func (r *RuleRepository) ListRuleVersions(ctx context.Context, ruleID string) ([]models.RuleVersion, error) {
+	query := `
+	SELECT id,
+	       rule_id,
+	       version,
+	       name,
+	       metric,
+	       operator,
+	       threshold,
+	       COALESCE(value, ''),
+	       severity,
+	       enabled,
+	       COALESCE(status, 'draft'),
+	       COALESCE(created_by, ''),
+	       created_at
+	FROM rule_versions
+	WHERE rule_id = $1
+	ORDER BY version DESC;
+	`
+
+	rows, err := r.pool.Query(ctx, query, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	versions := make([]models.RuleVersion, 0)
+
+	for rows.Next() {
+		var version models.RuleVersion
+
+		if err := rows.Scan(
+			&version.ID,
+			&version.RuleID,
+			&version.Version,
+			&version.Name,
+			&version.Metric,
+			&version.Operator,
+			&version.Threshold,
+			&version.Value,
+			&version.Severity,
+			&version.Enabled,
+			&version.Status,
+			&version.CreatedBy,
+			&version.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		versions = append(versions, version)
+	}
+
+	return versions, rows.Err()
+}
+
+func (r *RuleRepository) GetRuleVersion(ctx context.Context, ruleID string, versionNumber string) (*models.RuleVersion, error) {
+	query := `
+	SELECT id,
+	       rule_id,
+	       version,
+	       name,
+	       metric,
+	       operator,
+	       threshold,
+	       COALESCE(value, ''),
+	       severity,
+	       enabled,
+	       COALESCE(status, 'draft'),
+	       COALESCE(created_by, ''),
+	       created_at
+	FROM rule_versions
+	WHERE rule_id = $1 AND version = $2;
+	`
+
+	var version models.RuleVersion
+
+	err := r.pool.QueryRow(ctx, query, ruleID, versionNumber).Scan(
+		&version.ID,
+		&version.RuleID,
+		&version.Version,
+		&version.Name,
+		&version.Metric,
+		&version.Operator,
+		&version.Threshold,
+		&version.Value,
+		&version.Severity,
+		&version.Enabled,
+		&version.Status,
+		&version.CreatedBy,
+		&version.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &version, nil
+}

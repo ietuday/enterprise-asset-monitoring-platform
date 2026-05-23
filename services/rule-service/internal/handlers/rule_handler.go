@@ -235,6 +235,10 @@ func (h *RuleHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 
 	rule.Enabled = rule.Status == models.RuleStatusActive
 
+	if err := h.repo.CreateRuleVersion(r.Context(), oldRule, changedBy(r)); err != nil {
+		log.Printf("failed to create rule version snapshot: %v", err)
+	}
+
 	if err := h.repo.Update(r.Context(), id, &rule); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{
@@ -404,6 +408,113 @@ func (h *RuleHandler) changeRuleStatus(w http.ResponseWriter, r *http.Request, s
 		changedBy(r),
 	); err != nil {
 		log.Printf("failed to create rule audit log: %v", err)
+	}
+
+	h.regeneratePrometheusRules(r)
+
+	writeJSON(w, http.StatusOK, newRule)
+}
+
+func (h *RuleHandler) ListRuleVersions(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	versions, err := h.repo.ListRuleVersions(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, versions)
+}
+
+func (h *RuleHandler) RollbackRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	versionNumber := chi.URLParam(r, "version")
+
+	oldRule, err := h.repo.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "rule not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	if oldRule.Status == models.RuleStatusArchived {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "archived rules cannot be rolled back",
+		})
+		return
+	}
+
+	version, err := h.repo.GetRuleVersion(r.Context(), id, versionNumber)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "rule version not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	if err := h.repo.CreateRuleVersion(r.Context(), oldRule, changedBy(r)); err != nil {
+		log.Printf("failed to create pre-rollback rule version snapshot: %v", err)
+	}
+
+	rollbackRule := &models.Rule{
+		ID:        oldRule.ID,
+		Name:      version.Name,
+		Metric:    version.Metric,
+		Operator:  version.Operator,
+		Threshold: version.Threshold,
+		Value:     version.Value,
+		Severity:  version.Severity,
+		Enabled:   version.Status == models.RuleStatusActive,
+		Status:    version.Status,
+		CreatedAt: oldRule.CreatedAt,
+		UpdatedAt: oldRule.UpdatedAt,
+	}
+
+	if err := h.repo.Update(r.Context(), id, rollbackRule); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	newRule, err := h.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	ruleID := oldRule.ID
+
+	if err := h.repo.CreateAuditLog(
+		r.Context(),
+		&ruleID,
+		"RULE_ROLLED_BACK",
+		oldRule.Name,
+		oldRule,
+		newRule,
+		changedBy(r),
+	); err != nil {
+		log.Printf("failed to create rule rollback audit log: %v", err)
 	}
 
 	h.regeneratePrometheusRules(r)
