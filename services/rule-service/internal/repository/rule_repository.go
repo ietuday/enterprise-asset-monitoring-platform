@@ -18,9 +18,15 @@ func NewRuleRepository(pool *pgxpool.Pool) *RuleRepository {
 }
 
 func (r *RuleRepository) Create(ctx context.Context, rule *models.Rule) error {
+	if rule.Status == "" {
+		rule.Status = models.RuleStatusDraft
+	}
+
+	rule.Enabled = rule.Status == models.RuleStatusActive
+
 	query := `
-	INSERT INTO monitoring_rules (name, metric, operator, threshold, value, severity, enabled)
-	VALUES ($1, $2, $3, $4, $5, $6, $7)
+	INSERT INTO monitoring_rules (name, metric, operator, threshold, value, severity, enabled, status)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	RETURNING id, created_at, updated_at;
 	`
 
@@ -34,51 +40,37 @@ func (r *RuleRepository) Create(ctx context.Context, rule *models.Rule) error {
 		rule.Value,
 		rule.Severity,
 		rule.Enabled,
+		rule.Status,
 	).Scan(&rule.ID, &rule.CreatedAt, &rule.UpdatedAt)
 }
 
 func (r *RuleRepository) List(ctx context.Context) ([]models.Rule, error) {
 	query := `
-	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled,
+	       COALESCE(status, 'draft'), created_at, updated_at
 	FROM monitoring_rules
 	ORDER BY id DESC;
 	`
 
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	return r.scanRules(ctx, query)
+}
 
-	rules := make([]models.Rule, 0)
+func (r *RuleRepository) ListByStatus(ctx context.Context, status models.RuleStatus) ([]models.Rule, error) {
+	query := `
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled,
+	       COALESCE(status, 'draft'), created_at, updated_at
+	FROM monitoring_rules
+	WHERE status = $1
+	ORDER BY id ASC;
+	`
 
-	for rows.Next() {
-		var rule models.Rule
-
-		if err := rows.Scan(
-			&rule.ID,
-			&rule.Name,
-			&rule.Metric,
-			&rule.Operator,
-			&rule.Threshold,
-			&rule.Value,
-			&rule.Severity,
-			&rule.Enabled,
-			&rule.CreatedAt,
-			&rule.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-
-		rules = append(rules, rule)
-	}
-
-	return rules, rows.Err()
+	return r.scanRules(ctx, query, status)
 }
 
 func (r *RuleRepository) GetByID(ctx context.Context, id string) (*models.Rule, error) {
 	query := `
-	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
+	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled,
+	       COALESCE(status, 'draft'), created_at, updated_at
 	FROM monitoring_rules
 	WHERE id = $1;
 	`
@@ -94,6 +86,7 @@ func (r *RuleRepository) GetByID(ctx context.Context, id string) (*models.Rule, 
 		&rule.Value,
 		&rule.Severity,
 		&rule.Enabled,
+		&rule.Status,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
 	)
@@ -106,6 +99,12 @@ func (r *RuleRepository) GetByID(ctx context.Context, id string) (*models.Rule, 
 }
 
 func (r *RuleRepository) Update(ctx context.Context, id string, rule *models.Rule) error {
+	if rule.Status == "" {
+		rule.Status = models.RuleStatusDraft
+	}
+
+	rule.Enabled = rule.Status == models.RuleStatusActive
+
 	query := `
 	UPDATE monitoring_rules
 	SET name = $1,
@@ -115,8 +114,9 @@ func (r *RuleRepository) Update(ctx context.Context, id string, rule *models.Rul
 	    value = $5,
 	    severity = $6,
 	    enabled = $7,
+	    status = $8,
 	    updated_at = NOW()
-	WHERE id = $8
+	WHERE id = $9
 	RETURNING updated_at;
 	`
 
@@ -130,8 +130,24 @@ func (r *RuleRepository) Update(ctx context.Context, id string, rule *models.Rul
 		rule.Value,
 		rule.Severity,
 		rule.Enabled,
+		rule.Status,
 		id,
 	).Scan(&rule.UpdatedAt)
+}
+
+func (r *RuleRepository) UpdateStatus(ctx context.Context, id string, status models.RuleStatus) error {
+	enabled := status == models.RuleStatusActive
+
+	query := `
+	UPDATE monitoring_rules
+	SET status = $1,
+	    enabled = $2,
+	    updated_at = NOW()
+	WHERE id = $3;
+	`
+
+	_, err := r.pool.Exec(ctx, query, status, enabled, id)
+	return err
 }
 
 func (r *RuleRepository) Delete(ctx context.Context, id string) error {
@@ -145,14 +161,11 @@ func (r *RuleRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *RuleRepository) ListEnabled(ctx context.Context) ([]models.Rule, error) {
-	query := `
-	SELECT id, name, metric, operator, threshold, COALESCE(value, ''), severity, enabled, created_at, updated_at
-	FROM monitoring_rules
-	WHERE enabled = true
-	ORDER BY id ASC;
-	`
+	return r.ListByStatus(ctx, models.RuleStatusActive)
+}
 
-	rows, err := r.pool.Query(ctx, query)
+func (r *RuleRepository) scanRules(ctx context.Context, query string, args ...any) ([]models.Rule, error) {
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +185,7 @@ func (r *RuleRepository) ListEnabled(ctx context.Context) ([]models.Rule, error)
 			&rule.Value,
 			&rule.Severity,
 			&rule.Enabled,
+			&rule.Status,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
 		); err != nil {
