@@ -54,24 +54,81 @@ Rules can now move through clear operational states such as draft, active, disab
 - Makes rule management more enterprise-ready.
 
 
-## Rule Versioning and Rollback
+# v1.2.0 - Rule Lifecycle Management, Versioning, and Rollback
 
-This release adds version history and rollback support for monitoring rules.
+## Overview
 
-### Features
+This release improves dynamic monitoring rule governance by adding lifecycle management, version history, and rollback support.
 
-- Added `rule_versions` table
-- Added version snapshot creation before rule updates
+Rules can now move through clear operational states and every update can be tracked through version snapshots. This makes rule management safer, more auditable, and more enterprise-ready.
+
+## Features
+
+### Rule Lifecycle Management
+
+- Added rule lifecycle statuses:
+  - draft
+  - active
+  - disabled
+  - archived
+
+- Added lifecycle APIs:
+  - PATCH /rules/{id}/activate
+  - PATCH /rules/{id}/disable
+  - PATCH /rules/{id}/archive
+
+- Added status-based filtering:
+  - GET /rules?status=draft
+  - GET /rules?status=active
+  - GET /rules?status=disabled
+  - GET /rules?status=archived
+
+### Prometheus Rule Generation
+
+- Prometheus dynamic rules are now generated only from active rules.
+- Draft, disabled, and archived rules are excluded from Prometheus alert generation.
+
+### Rule Audit History
+
+Added lifecycle audit events:
+
+- RULE_CREATED
+- RULE_UPDATED
+- RULE_ACTIVATED
+- RULE_DISABLED
+- RULE_ARCHIVED
+- RULE_DELETED
+- RULE_ROLLED_BACK
+
+### Rule Versioning and Rollback
+
+- Added rule_versions table
+- Added RuleVersion model
+- Added version snapshot before rule updates
 - Added API to list rule versions:
-  - `GET /rules/{id}/versions`
+  - GET /rules/{id}/versions
 - Added rollback API:
-  - `POST /rules/{id}/rollback/{version}`
-- Added rollback audit event:
-  - `RULE_ROLLED_BACK`
+  - POST /rules/{id}/rollback/{version}
 
-### Behavior
+## Behavior Changes
 
-- Every rule update stores the previous rule state as a version snapshot.
-- Rollback restores rule name, metric, operator, threshold, value, severity, enabled, and status.
-- Archived rules cannot be rolled back.
+- New rules are created as draft by default.
+- A rule becomes enabled only when status is active.
+- Archived rules cannot be updated or rolled back.
+- Rollback restores previous rule configuration.
 - Rollback regenerates Prometheus dynamic rules.
+
+## Testing
+
+Validated with:
+
+- go test ./...
+- Manual curl testing for:
+  - create rule
+  - activate rule
+  - disable rule
+  - archive rule
+  - update rule
+  - list rule versions
+  - rollback rule
+  - audit history
