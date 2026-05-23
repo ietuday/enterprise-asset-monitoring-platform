@@ -58,6 +58,26 @@ func Init(ctx context.Context, pool *pgxpool.Pool) error {
 		changed_by TEXT,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
+
+	CREATE TABLE IF NOT EXISTS rule_versions (
+		id BIGSERIAL PRIMARY KEY,
+		rule_id BIGINT NOT NULL,
+		version INTEGER NOT NULL,
+		name TEXT NOT NULL,
+		metric TEXT NOT NULL,
+		operator TEXT NOT NULL,
+		threshold DOUBLE PRECISION NOT NULL DEFAULT 0,
+		value TEXT,
+		severity TEXT NOT NULL,
+		enabled BOOLEAN NOT NULL DEFAULT false,
+		status TEXT NOT NULL DEFAULT 'draft',
+		created_by TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		UNIQUE(rule_id, version)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_rule_versions_rule_id
+	ON rule_versions(rule_id);
 	`
 
 	_, err := pool.Exec(ctx, query)

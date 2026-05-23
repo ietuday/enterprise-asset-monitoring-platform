@@ -41,6 +41,9 @@ func main() {
 	r.Patch("/rules/{id}/disable", ruleHandler.DisableRule)
 	r.Patch("/rules/{id}/archive", ruleHandler.ArchiveRule)
 
+	r.Get("/rules/{id}/versions", ruleHandler.ListRuleVersions)
+	r.Post("/rules/{id}/rollback/{version}", ruleHandler.RollbackRule)
+
 	r.Get("/rules/history", ruleHandler.ListRuleAuditLogs)
 	r.Get("/rules/{id}/history", ruleHandler.ListRuleAuditLogsByRuleID)
 
