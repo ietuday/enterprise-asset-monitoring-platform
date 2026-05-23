@@ -26,13 +26,27 @@ func Init(ctx context.Context, pool *pgxpool.Pool) error {
 		threshold DOUBLE PRECISION NOT NULL DEFAULT 0,
 		value TEXT,
 		severity TEXT NOT NULL,
-		enabled BOOLEAN NOT NULL DEFAULT true,
+		enabled BOOLEAN NOT NULL DEFAULT false,
+		status TEXT NOT NULL DEFAULT 'draft',
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
 
 	ALTER TABLE monitoring_rules
 	ADD COLUMN IF NOT EXISTS value TEXT;
+
+	ALTER TABLE monitoring_rules
+	ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+
+	UPDATE monitoring_rules
+	SET status = CASE
+		WHEN enabled = true THEN 'active'
+		ELSE 'draft'
+	END
+	WHERE status IS NULL OR status = '';
+
+	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_status
+	ON monitoring_rules(status);
 
 	CREATE TABLE IF NOT EXISTS rule_audit_logs (
 		id BIGSERIAL PRIMARY KEY,

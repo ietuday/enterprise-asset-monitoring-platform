@@ -37,10 +37,10 @@ func GenerateRulesYAML(rules []models.Rule) ([]byte, error) {
 	buffer.WriteString("    interval: 5s\n")
 	buffer.WriteString("    rules:\n")
 
-	enabledRuleCount := 0
+	activeRuleCount := 0
 
 	for _, rule := range rules {
-		if !rule.Enabled {
+		if rule.Status != models.RuleStatusActive {
 			continue
 		}
 
@@ -49,7 +49,7 @@ func GenerateRulesYAML(rules []models.Rule) ([]byte, error) {
 			continue
 		}
 
-		enabledRuleCount++
+		activeRuleCount++
 
 		buffer.WriteString(fmt.Sprintf("      - alert: %s\n", alertName(rule.Name)))
 		if rule.Metric == "status" {
@@ -67,7 +67,7 @@ func GenerateRulesYAML(rules []models.Rule) ([]byte, error) {
 		buffer.WriteString(fmt.Sprintf("          alert_name: \"%s\"\n", rule.Name))
 	}
 
-	if enabledRuleCount == 0 {
+	if activeRuleCount == 0 {
 		buffer.WriteString("      []\n")
 	}
 
