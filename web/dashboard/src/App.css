@@ -335,6 +335,106 @@ td button {
   color: #a40000;
 }
 
+.rules-summary-grid {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.compact-summary h2 {
+  font-size: 24px;
+}
+
+.inline-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.form-actions {
+  align-self: end;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rule-status-draft {
+  background: #edf1f5;
+  color: #475569;
+}
+
+.rule-status-active {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.rule-status-disabled {
+  background: #fff0cc;
+  color: #8a5a00;
+}
+
+.rule-status-archived {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.action-rule_created,
+.action-created {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.action-rule_updated,
+.action-updated {
+  background: #e4edff;
+  color: #1f4fa3;
+}
+
+.action-rule_deleted,
+.action-deleted {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
+.action-rule_activated {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.action-rule_disabled {
+  background: #fff0cc;
+  color: #8a5a00;
+}
+
+.action-rule_archived {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.action-rule_rolled_back {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+@media (max-width: 1100px) {
+  .rules-summary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .rules-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
   .telemetry-form {
     grid-template-columns: repeat(3, 1fr);

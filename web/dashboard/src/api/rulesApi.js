@@ -10,9 +10,10 @@ function authHeaders() {
   };
 }
 
-export async function getRules() {
+export async function getRules(status = "") {
   const response = await axios.get(`${API_BASE_URL}/api/rules`, {
     headers: authHeaders(),
+    params: status ? { status } : {},
   });
 
   return response.data;
@@ -44,6 +45,62 @@ export async function deleteRule(id) {
   const response = await axios.delete(`${API_BASE_URL}/api/rules/${id}`, {
     headers: authHeaders(),
   });
+
+  return response.data;
+}
+
+export async function activateRule(id) {
+  const response = await axios.patch(
+    `${API_BASE_URL}/api/rules/${id}/activate`,
+    {},
+    {
+      headers: authHeaders(),
+    }
+  );
+
+  return response.data;
+}
+
+export async function disableRule(id) {
+  const response = await axios.patch(
+    `${API_BASE_URL}/api/rules/${id}/disable`,
+    {},
+    {
+      headers: authHeaders(),
+    }
+  );
+
+  return response.data;
+}
+
+export async function archiveRule(id) {
+  const response = await axios.patch(
+    `${API_BASE_URL}/api/rules/${id}/archive`,
+    {},
+    {
+      headers: authHeaders(),
+    }
+  );
+
+  return response.data;
+}
+
+export async function getRuleVersions(id) {
+  const response = await axios.get(`${API_BASE_URL}/api/rules/${id}/versions`, {
+    headers: authHeaders(),
+  });
+
+  return response.data;
+}
+
+export async function rollbackRule(id, version) {
+  const response = await axios.post(
+    `${API_BASE_URL}/api/rules/${id}/rollback/${version}`,
+    {},
+    {
+      headers: authHeaders(),
+    }
+  );
 
   return response.data;
 }
