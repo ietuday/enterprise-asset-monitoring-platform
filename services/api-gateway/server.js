@@ -205,6 +205,30 @@ app.use(
 );
 
 /**
+ * Protected Incident Routes
+ * - GET /api/incidents -> ADMIN, OPERATOR, VIEWER
+ * - POST/PUT /api/incidents -> ADMIN, OPERATOR only
+ */
+app.use(
+  "/api/incidents",
+  authenticate,
+  (req, res, next) => {
+    if (req.method === "GET") {
+      return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+    }
+
+    return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
+  },
+  createProxyMiddleware({
+    target: ALERT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/incidents" : `/incidents${path}`;
+    },
+  })
+);
+
+/**
  * Protected Report Routes
  * - GET /api/reports -> ADMIN, OPERATOR, VIEWER
  * - POST/PUT/DELETE /api/reports -> ADMIN only
