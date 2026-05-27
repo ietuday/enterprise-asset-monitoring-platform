@@ -3,9 +3,12 @@ package sender
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/mail"
 	"net/smtp"
@@ -130,7 +133,7 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- smtp.SendMail(addr, auth, fromAddress, []string{toAddress}, message)
+		errCh <- sendSMTPMail(ctx, addr, s.config.Host, auth, fromAddress, []string{toAddress}, message)
 	}()
 
 	select {
@@ -139,6 +142,74 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 	case err := <-errCh:
 		return err
 	}
+}
+
+func sendSMTPMail(ctx context.Context, addr string, serverName string, auth smtp.Auth, from string, recipients []string, message []byte) error {
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+
+	client, err := smtp.NewClient(conn, serverName)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: serverName,
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return err
+		}
+	}
+
+	if auth != nil {
+		if ok, _ := client.Extension("AUTH"); ok {
+			if err := client.Auth(auth); err != nil {
+				return err
+			}
+		} else {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+	}
+
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+
+	for _, recipient := range recipients {
+		if err := client.Rcpt(recipient); err != nil {
+			return err
+		}
+	}
+
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+
+	if _, err := writer.Write(message); err != nil {
+		writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	if err := client.Quit(); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	return nil
 }
 
 type emailHeader struct {
