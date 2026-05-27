@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"strconv"
+	"strings"
 	"time"
 
 	"notification-service/internal/models"
@@ -115,14 +117,10 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 		return fmt.Errorf("invalid SMTP port: %s", port)
 	}
 
-	message := bytes.Buffer{}
-	message.WriteString("From: " + s.config.From + "\r\n")
-	message.WriteString("To: " + channel.Target + "\r\n")
-	message.WriteString("Subject: " + req.Subject + "\r\n")
-	message.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
-	message.WriteString("\r\n")
-	message.WriteString(req.Message)
-	message.WriteString("\r\n")
+	message, fromAddress, toAddress, err := buildEmailMessage(s.config.From, channel.Target, req.Subject, req.Message)
+	if err != nil {
+		return err
+	}
 
 	addr := s.config.Host + ":" + port
 	var auth smtp.Auth
@@ -132,7 +130,7 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- smtp.SendMail(addr, auth, s.config.From, []string{channel.Target}, message.Bytes())
+		errCh <- smtp.SendMail(addr, auth, fromAddress, []string{toAddress}, message)
 	}()
 
 	select {
@@ -141,4 +139,75 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 	case err := <-errCh:
 		return err
 	}
+}
+
+type emailHeader struct {
+	name  string
+	value string
+}
+
+func buildEmailMessage(from string, to string, subject string, body string) ([]byte, string, string, error) {
+	fromAddress, err := validateEmailAddress(from)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("invalid from address: %w", err)
+	}
+
+	toAddress, err := validateEmailAddress(to)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("invalid recipient address: %w", err)
+	}
+
+	headers := []emailHeader{
+		{name: "From", value: sanitizeEmailHeader(from)},
+		{name: "To", value: sanitizeEmailHeader(to)},
+		{name: "Subject", value: sanitizeEmailHeader(subject)},
+		{name: "MIME-Version", value: "1.0"},
+		{name: "Content-Type", value: "text/plain; charset=UTF-8"},
+	}
+
+	message := bytes.Buffer{}
+	for _, header := range headers {
+		message.WriteString(header.name)
+		message.WriteString(": ")
+		message.WriteString(header.value)
+		message.WriteString("\r\n")
+	}
+
+	message.WriteString("\r\n")
+	message.WriteString(sanitizeEmailBody(body))
+	message.WriteString("\r\n")
+
+	return message.Bytes(), fromAddress, toAddress, nil
+}
+
+func sanitizeEmailHeader(value string) string {
+	sanitized := strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+	sanitized = strings.Join(strings.Fields(sanitized), " ")
+	if len(sanitized) > 255 {
+		return sanitized[:255]
+	}
+
+	return sanitized
+}
+
+func sanitizeEmailBody(value string) string {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	return strings.ReplaceAll(normalized, "\n", "\r\n")
+}
+
+func validateEmailAddress(value string) (string, error) {
+	if strings.ContainsAny(value, "\r\n") {
+		return "", errors.New("email address must not contain CR or LF")
+	}
+
+	parsed, err := mail.ParseAddress(strings.TrimSpace(value))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Address == "" {
+		return "", errors.New("email address is required")
+	}
+
+	return parsed.Address, nil
 }
