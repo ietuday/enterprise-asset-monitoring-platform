@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "./App.css";
+import IncidentsPage from "./pages/IncidentsPage";
 import RulesPage from "./pages/RulesPage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+function pageFromPath(pathname) {
+  if (pathname === "/rules") return "rules";
+  if (pathname === "/incidents") return "incidents";
+  return "dashboard";
+}
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -12,7 +19,8 @@ function App() {
     return storedUser ? JSON.parse(storedUser) : null;
   });
 
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, setActivePage] = useState(() => pageFromPath(window.location.pathname));
+  const [refreshSignal, setRefreshSignal] = useState(0);
 
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin123");
@@ -59,7 +67,7 @@ function App() {
 
       setToken(receivedToken);
       setUser(receivedUser);
-      setActivePage("dashboard");
+      navigate("dashboard");
     } catch (err) {
       setError(err.response?.data?.error || "Login failed");
     }
@@ -74,7 +82,22 @@ function App() {
     setSummary(null);
     setAssets([]);
     setAlerts([]);
-    setActivePage("dashboard");
+    navigate("dashboard");
+  }
+
+  function navigate(page) {
+    const path = page === "dashboard" ? "/" : `/${page}`;
+    window.history.pushState({}, "", path);
+    setActivePage(page);
+  }
+
+  function refreshActivePage() {
+    if (activePage === "dashboard") {
+      loadDashboard();
+      return;
+    }
+
+    setRefreshSignal((current) => current + 1);
   }
 
   async function loadDashboard() {
@@ -167,6 +190,15 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activePage]);
 
+  useEffect(() => {
+    function handlePopState() {
+      setActivePage(pageFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   if (!token) {
     return (
       <div className="page">
@@ -202,7 +234,7 @@ function App() {
   return (
     <div className="page">
       <header className="header">
-        <div>
+        <div className="header-title">
           <h1>Enterprise Asset Monitoring</h1>
           <p>
             Secure microservices dashboard
@@ -213,21 +245,26 @@ function App() {
         <div className="header-actions">
           <button
             className={activePage === "dashboard" ? "active" : "secondary"}
-            onClick={() => setActivePage("dashboard")}
+            onClick={() => navigate("dashboard")}
           >
             Dashboard
           </button>
 
           <button
             className={activePage === "rules" ? "active" : "secondary"}
-            onClick={() => setActivePage("rules")}
+            onClick={() => navigate("rules")}
           >
             Rules
           </button>
 
-          {activePage === "dashboard" && (
-            <button onClick={loadDashboard}>Refresh</button>
-          )}
+          <button
+            className={activePage === "incidents" ? "active" : "secondary"}
+            onClick={() => navigate("incidents")}
+          >
+            Incidents
+          </button>
+
+          <button onClick={refreshActivePage}>Refresh</button>
 
           <button className="secondary" onClick={logout}>
             Logout
@@ -236,7 +273,9 @@ function App() {
       </header>
 
       {activePage === "rules" ? (
-        <RulesPage />
+        <RulesPage refreshSignal={refreshSignal} />
+      ) : activePage === "incidents" ? (
+        <IncidentsPage refreshSignal={refreshSignal} />
       ) : (
         <DashboardPage
           summary={summary}

@@ -24,7 +24,7 @@ const emptyRule = {
 
 const statusOptions = ["all", "draft", "active", "disabled", "archived"];
 
-export default function RulesPage() {
+export default function RulesPage({ refreshSignal = 0 }) {
   const [rules, setRules] = useState([]);
   const [form, setForm] = useState(emptyRule);
   const [editingRule, setEditingRule] = useState(null);
@@ -102,9 +102,18 @@ export default function RulesPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (refreshSignal > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadRules();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
   function handleStatusFilterChange(event) {
     const nextStatus = event.target.value;

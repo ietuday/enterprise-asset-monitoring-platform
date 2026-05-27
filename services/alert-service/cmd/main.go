@@ -32,6 +32,9 @@ func main() {
 	if err := alertdb.CreateAlertsTable(ctx, dbpool); err != nil {
 		log.Fatalf("failed to create alerts table: %v", err)
 	}
+	if err := alertdb.CreateIncidentTables(ctx, dbpool); err != nil {
+		log.Fatalf("failed to create incident tables: %v", err)
+	}
 
 	alertRepo := repository.NewAlertRepository(dbpool)
 	alertHandler := handlers.NewAlertHandler(alertRepo)
@@ -51,6 +54,15 @@ func main() {
 	r.Put("/alerts/{id}/acknowledge", alertHandler.AcknowledgeAlert)
 	r.Put("/alerts/{id}/resolve", alertHandler.ResolveAlert)
 	r.Put("/alerts/resolve-active", alertHandler.ResolveActiveAlert)
+
+	r.Post("/incidents", alertHandler.CreateIncident)
+	r.Get("/incidents", alertHandler.ListIncidents)
+	r.Get("/incidents/{id}", alertHandler.GetIncidentByID)
+	r.Put("/incidents/{id}/assign", alertHandler.AssignIncident)
+	r.Put("/incidents/{id}/acknowledge", alertHandler.AcknowledgeIncident)
+	r.Put("/incidents/{id}/resolve", alertHandler.ResolveIncident)
+	r.Put("/incidents/{id}/close", alertHandler.CloseIncident)
+	r.Get("/incidents/{id}/history", alertHandler.GetIncidentHistory)
 
 	port := getEnv("PORT", "5003")
 
