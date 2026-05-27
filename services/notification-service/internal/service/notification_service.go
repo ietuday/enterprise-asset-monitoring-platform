@@ -103,6 +103,9 @@ func (s *NotificationService) Send(ctx context.Context, req models.SendNotificat
 		return models.SendSummary{}, err
 	}
 
+	req.Subject = sanitizeEmailHeaderForService(req.Subject)
+	req.Message = sanitizeEmailBodyForService(req.Message)
+
 	channels, err := s.channels.ListEnabledChannels(ctx)
 	if err != nil {
 		return models.SendSummary{}, err
@@ -263,6 +266,38 @@ func (s *NotificationService) attemptSend(ctx context.Context, channel models.No
 
 	result.Status = models.NotificationStatusSent
 	return result
+}
+
+func sanitizeEmailHeaderForService(value string) string {
+	sanitized := strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+	sanitized = strings.Join(strings.Fields(sanitized), " ")
+	if len(sanitized) > 255 {
+		return sanitized[:255]
+	}
+
+	return sanitized
+}
+
+func sanitizeEmailBodyForService(value string) string {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	var builder strings.Builder
+	builder.Grow(len(normalized))
+
+	count := 0
+	for _, char := range normalized {
+		if count >= 10000 {
+			break
+		}
+
+		if char == '\n' || char == '\t' || (char >= 0x20 && char != 0x7f) {
+			builder.WriteRune(char)
+			count++
+		}
+	}
+
+	return strings.ReplaceAll(builder.String(), "\n", "\r\n")
 }
 
 func ValidateChannel(channel *models.NotificationChannel) error {
