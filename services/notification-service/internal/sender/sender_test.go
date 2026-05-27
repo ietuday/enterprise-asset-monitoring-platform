@@ -49,6 +49,26 @@ func TestEmailFromContainingCRLFIsRejected(t *testing.T) {
 	}
 }
 
+func TestEmailBodyControlCharactersAreRemoved(t *testing.T) {
+	message, _, _, err := buildEmailMessage(
+		"ops@example.com",
+		"recipient@example.com",
+		"Alert",
+		"Line\x00 one\tok\x1f\rLine two\x7f",
+	)
+	if err != nil {
+		t.Fatalf("expected message build to succeed: %v", err)
+	}
+
+	body := emailBody(t, string(message))
+	if strings.ContainsAny(body, "\x00\x1f\x7f") {
+		t.Fatalf("expected control characters to be removed, body was %q", body)
+	}
+	if !strings.Contains(body, "Line one\tok\r\nLine two") {
+		t.Fatalf("expected tab and normalized newline to remain, body was %q", body)
+	}
+}
+
 func TestNormalEmailMessageBuildsSafely(t *testing.T) {
 	message, from, to, err := buildEmailMessage(
 		"Ops <ops@example.com>",
@@ -105,4 +125,15 @@ func emailHeaders(t *testing.T, message string) string {
 	}
 
 	return parts[0]
+}
+
+func emailBody(t *testing.T, message string) string {
+	t.Helper()
+
+	parts := strings.SplitN(message, "\r\n\r\n", 2)
+	if len(parts) != 2 {
+		t.Fatalf("expected header/body separator, got %q", message)
+	}
+
+	return parts[1]
 }

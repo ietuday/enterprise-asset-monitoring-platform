@@ -193,7 +193,23 @@ func sanitizeEmailHeader(value string) string {
 func sanitizeEmailBody(value string) string {
 	normalized := strings.ReplaceAll(value, "\r\n", "\n")
 	normalized = strings.ReplaceAll(normalized, "\r", "\n")
-	return strings.ReplaceAll(normalized, "\n", "\r\n")
+
+	var builder strings.Builder
+	builder.Grow(len(normalized))
+
+	count := 0
+	for _, char := range normalized {
+		if count >= 10000 {
+			break
+		}
+
+		if char == '\n' || char == '\t' || (char >= 0x20 && char != 0x7f) {
+			builder.WriteRune(char)
+			count++
+		}
+	}
+
+	return strings.ReplaceAll(builder.String(), "\n", "\r\n")
 }
 
 func validateEmailAddress(value string) (string, error) {
