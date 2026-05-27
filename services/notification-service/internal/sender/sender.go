@@ -197,7 +197,7 @@ func sendSMTPMail(ctx context.Context, addr string, serverName string, auth smtp
 		return err
 	}
 
-	if _, err := writer.Write(message); err != nil {
+	if _, err := io.Copy(writer, bytes.NewReader(message)); err != nil {
 		writer.Close()
 		return err
 	}
