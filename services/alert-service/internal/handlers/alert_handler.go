@@ -6,10 +6,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"alert-service/internal/metrics"
 	"alert-service/internal/models"
+	"alert-service/internal/notification"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -34,7 +36,12 @@ type AlertRepository interface {
 }
 
 type AlertHandler struct {
-	repo AlertRepository
+	repo         AlertRepository
+	notification NotificationClient
+}
+
+type NotificationClient interface {
+	Send(ctx context.Context, req notification.SendRequest)
 }
 
 type resolveActiveAlertRequest struct {
@@ -75,8 +82,13 @@ type incidentActionRequest struct {
 	ResolutionNote string `json:"resolution_note"`
 }
 
-func NewAlertHandler(repo AlertRepository) *AlertHandler {
-	return &AlertHandler{repo: repo}
+func NewAlertHandler(repo AlertRepository, notificationClients ...NotificationClient) *AlertHandler {
+	var notificationClient NotificationClient
+	if len(notificationClients) > 0 {
+		notificationClient = notificationClients[0]
+	}
+
+	return &AlertHandler{repo: repo, notification: notificationClient}
 }
 
 func (h *AlertHandler) Health(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +129,8 @@ func (h *AlertHandler) CreateAlert(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	h.notifyCriticalAlertCreated(r.Context(), alert)
 
 	if err := h.createIncidentForCriticalAlert(r.Context(), alert); err != nil {
 		log.Printf("failed to auto-create incident for alert %d: %v", alert.ID, err)
@@ -308,6 +322,8 @@ func (h *AlertHandler) AlertmanagerWebhook(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 
+			h.notifyCriticalAlertCreated(r.Context(), alert)
+
 			if err := h.createIncidentForCriticalAlert(r.Context(), alert); err != nil {
 				log.Printf("failed to auto-create incident for alert %d: %v", alert.ID, err)
 			}
@@ -387,6 +403,8 @@ func (h *AlertHandler) CreateIncident(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyIncident(r.Context(), notification.EventIncidentCreated, "Incident created", incident, "")
+
 	writeJSON(w, http.StatusCreated, incident)
 }
 
@@ -459,7 +477,9 @@ func (h *AlertHandler) AssignIncident(w http.ResponseWriter, r *http.Request) {
 	}
 
 	incident, err := h.repo.AssignIncident(r.Context(), chi.URLParam(r, "id"), req.AssignedTo, req.Actor, req.Comment)
-	h.writeIncidentActionResponse(w, incident, err)
+	h.writeIncidentActionResponse(w, incident, err, func() {
+		h.notifyIncident(r.Context(), notification.EventIncidentAssigned, "Incident assigned", *incident, req.AssignedTo)
+	})
 }
 
 func (h *AlertHandler) AcknowledgeIncident(w http.ResponseWriter, r *http.Request) {
@@ -480,7 +500,9 @@ func (h *AlertHandler) AcknowledgeIncident(w http.ResponseWriter, r *http.Reques
 	}
 
 	incident, err := h.repo.AcknowledgeIncident(r.Context(), chi.URLParam(r, "id"), req.Actor, req.Comment)
-	h.writeIncidentActionResponse(w, incident, err)
+	h.writeIncidentActionResponse(w, incident, err, func() {
+		h.notifyIncident(r.Context(), notification.EventIncidentAcknowledged, "Incident acknowledged", *incident, "")
+	})
 }
 
 func (h *AlertHandler) ResolveIncident(w http.ResponseWriter, r *http.Request) {
@@ -501,7 +523,9 @@ func (h *AlertHandler) ResolveIncident(w http.ResponseWriter, r *http.Request) {
 	}
 
 	incident, err := h.repo.ResolveIncident(r.Context(), chi.URLParam(r, "id"), req.Actor, req.ResolutionNote)
-	h.writeIncidentActionResponse(w, incident, err)
+	h.writeIncidentActionResponse(w, incident, err, func() {
+		h.notifyIncident(r.Context(), notification.EventIncidentResolved, "Incident resolved", *incident, "")
+	})
 }
 
 func (h *AlertHandler) CloseIncident(w http.ResponseWriter, r *http.Request) {
@@ -522,7 +546,9 @@ func (h *AlertHandler) CloseIncident(w http.ResponseWriter, r *http.Request) {
 	}
 
 	incident, err := h.repo.CloseIncident(r.Context(), chi.URLParam(r, "id"), req.Actor, req.Comment)
-	h.writeIncidentActionResponse(w, incident, err)
+	h.writeIncidentActionResponse(w, incident, err, func() {
+		h.notifyIncident(r.Context(), notification.EventIncidentClosed, "Incident closed", *incident, "")
+	})
 }
 
 func (h *AlertHandler) GetIncidentHistory(w http.ResponseWriter, r *http.Request) {
@@ -567,7 +593,12 @@ func (h *AlertHandler) createIncidentForCriticalAlert(ctx context.Context, alert
 		Status:      models.IncidentStatusOpen,
 	}
 
-	return h.repo.CreateIncident(ctx, &incident, "system", "Incident auto-created from critical alert")
+	if err := h.repo.CreateIncident(ctx, &incident, "system", "Incident auto-created from critical alert"); err != nil {
+		return err
+	}
+
+	h.notifyIncident(ctx, notification.EventIncidentCreated, "Incident created", incident, "")
+	return nil
 }
 
 func isValidIncidentStatus(status string) bool {
@@ -595,7 +626,7 @@ func isValidSeverity(severity string) bool {
 	}
 }
 
-func (h *AlertHandler) writeIncidentActionResponse(w http.ResponseWriter, incident *models.Incident, err error) {
+func (h *AlertHandler) writeIncidentActionResponse(w http.ResponseWriter, incident *models.Incident, err error, afterSuccess ...func()) {
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{
@@ -610,7 +641,64 @@ func (h *AlertHandler) writeIncidentActionResponse(w http.ResponseWriter, incide
 		return
 	}
 
+	for _, hook := range afterSuccess {
+		hook()
+	}
+
 	writeJSON(w, http.StatusOK, incident)
+}
+
+func (h *AlertHandler) notifyCriticalAlertCreated(ctx context.Context, alert models.Alert) {
+	if strings.ToUpper(alert.Severity) != models.SeverityCritical || h.notification == nil {
+		return
+	}
+
+	h.notification.Send(ctx, notification.SendRequest{
+		EventType: notification.EventCriticalAlertCreated,
+		Subject:   "Critical alert created",
+		Message:   notification.CriticalAlertMessage(alert.Name, alert.AssetID),
+		Severity:  alert.Severity,
+		AssetID:   alert.AssetID,
+		AlertID:   notification.AlertID(alert.ID),
+		Payload: map[string]any{
+			"alert_name": alert.Name,
+			"status":     alert.Status,
+		},
+	})
+}
+
+func (h *AlertHandler) notifyIncident(ctx context.Context, eventType string, subject string, incident models.Incident, assignedTo string) {
+	if h.notification == nil {
+		return
+	}
+
+	message := ""
+	switch eventType {
+	case notification.EventIncidentCreated:
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " created for asset " + incident.AssetID
+	case notification.EventIncidentAssigned:
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " assigned to " + assignedTo
+	case notification.EventIncidentAcknowledged:
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " acknowledged"
+	case notification.EventIncidentResolved:
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " resolved"
+	case notification.EventIncidentClosed:
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " closed"
+	}
+
+	h.notification.Send(ctx, notification.SendRequest{
+		EventType:  eventType,
+		Subject:    subject,
+		Message:    message,
+		Severity:   incident.Severity,
+		AssetID:    incident.AssetID,
+		AlertID:    incident.AlertID,
+		IncidentID: notification.IncidentID(incident.ID),
+		Payload: map[string]any{
+			"status":      incident.Status,
+			"assigned_to": incident.AssignedTo,
+		},
+	})
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, data any) {

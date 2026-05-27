@@ -76,10 +76,34 @@ services:
     environment:
       PORT: ${ALERT_SERVICE_PORT}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      NOTIFICATION_SERVICE_URL: http://notification-service:8090
     ports:
       - "${ALERT_SERVICE_PORT}:5003"
     depends_on:
       - postgres
+      - notification-service
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: monitoring-notification-service
+    restart: always
+    environment:
+      PORT: ${NOTIFICATION_SERVICE_PORT:-8090}
+      NOTIFICATION_SERVICE_PORT: ${NOTIFICATION_SERVICE_PORT:-8090}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-8090}:8090"
+    depends_on:
+      - postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   auth-service:
     build:
@@ -125,6 +149,7 @@ services:
       ALERT_SERVICE_URL: ${ALERT_SERVICE_URL}
       REPORT_SERVICE_URL: ${REPORT_SERVICE_URL}
       RULE_SERVICE_URL: ${RULE_SERVICE_URL}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8090
     ports:
       - "${API_GATEWAY_PORT}:4000"
     depends_on:
@@ -132,6 +157,7 @@ services:
       - asset-service
       - telemetry-service
       - alert-service
+      - notification-service
       - report-service
       - rule-service
 

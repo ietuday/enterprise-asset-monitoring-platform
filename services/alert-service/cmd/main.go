@@ -5,10 +5,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	alertdb "alert-service/internal/db"
 	"alert-service/internal/handlers"
 	"alert-service/internal/metrics"
+	"alert-service/internal/notification"
 	"alert-service/internal/repository"
 
 	"github.com/go-chi/chi/v5"
@@ -37,7 +39,8 @@ func main() {
 	}
 
 	alertRepo := repository.NewAlertRepository(dbpool)
-	alertHandler := handlers.NewAlertHandler(alertRepo)
+	notificationClient := notification.NewClient(os.Getenv("NOTIFICATION_SERVICE_URL"), 3*time.Second)
+	alertHandler := handlers.NewAlertHandler(alertRepo, notificationClient)
 
 	metrics.Register()
 

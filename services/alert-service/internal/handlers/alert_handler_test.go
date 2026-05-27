@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"alert-service/internal/models"
+	alertnotification "alert-service/internal/notification"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -203,6 +205,92 @@ func TestCriticalAlertAutomaticallyCreatesIncident(t *testing.T) {
 	if len(repo.incidents) != 1 {
 		t.Fatalf("expected duplicate critical alert to keep 1 active incident, got %d", len(repo.incidents))
 	}
+}
+
+func TestCriticalAlertSucceedsWhenNotificationServiceURLIsEmpty(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo, alertnotification.NewClient("", time.Millisecond))
+
+	body := `{
+		"assetId": "asset-101",
+		"name": "Critical high temperature",
+		"severity": "CRITICAL",
+		"message": "Temperature crossed critical threshold"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/alerts", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.CreateAlert(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+	if len(repo.incidents) != 1 {
+		t.Fatalf("expected incident to be created, got %d", len(repo.incidents))
+	}
+}
+
+func TestCriticalAlertSucceedsWhenNotificationServiceUnavailable(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo, alertnotification.NewClient("http://127.0.0.1:1", time.Millisecond))
+
+	body := `{
+		"assetId": "asset-101",
+		"name": "Critical high temperature",
+		"severity": "CRITICAL",
+		"message": "Temperature crossed critical threshold"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/alerts", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.CreateAlert(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+	if len(repo.incidents) != 1 {
+		t.Fatalf("expected incident to be created, got %d", len(repo.incidents))
+	}
+}
+
+func TestIncidentLifecycleSucceedsWhenNotificationServiceUnavailable(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo, alertnotification.NewClient("http://127.0.0.1:1", time.Millisecond))
+	incident := models.Incident{
+		AssetID:     "asset-101",
+		Title:       "Critical high temperature",
+		Description: "Temperature crossed critical threshold",
+		Severity:    "CRITICAL",
+	}
+	if err := repo.CreateIncident(nil, &incident, "system", "created"); err != nil {
+		t.Fatalf("failed to seed incident: %v", err)
+	}
+
+	router := chi.NewRouter()
+	router.Put("/incidents/{id}/assign", handler.AssignIncident)
+	router.Put("/incidents/{id}/acknowledge", handler.AcknowledgeIncident)
+	router.Put("/incidents/{id}/resolve", handler.ResolveIncident)
+	router.Put("/incidents/{id}/close", handler.CloseIncident)
+
+	assertIncidentAction(t, router, http.MethodPut, "/incidents/1/assign", `{
+		"assigned_to": "operator@example.com",
+		"actor": "admin@example.com"
+	}`, "ASSIGNED")
+
+	assertIncidentAction(t, router, http.MethodPut, "/incidents/1/acknowledge", `{
+		"actor": "operator@example.com"
+	}`, "ACKNOWLEDGED")
+
+	assertIncidentAction(t, router, http.MethodPut, "/incidents/1/resolve", `{
+		"actor": "operator@example.com",
+		"resolution_note": "Cooling system restarted"
+	}`, "RESOLVED")
+
+	assertIncidentAction(t, router, http.MethodPut, "/incidents/1/close", `{
+		"actor": "admin@example.com"
+	}`, "CLOSED")
 }
 
 func assertIncidentAction(t *testing.T, router http.Handler, method string, path string, body string, expectedStatus string) models.Incident {

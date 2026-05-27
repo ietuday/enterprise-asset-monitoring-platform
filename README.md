@@ -21,6 +21,7 @@ It supports:
 - Prometheus rule generation
 - Prometheus-based alert evaluation
 - Alertmanager webhook delivery
+- Notification channel management and alert delivery
 - Alert lifecycle management
 - Alert deduplication
 - Auto alert resolution
@@ -49,6 +50,7 @@ Node.js API Gateway
       |-- Alert Service      Go
       |-- Rule Service       Go
       |-- Report Service     Python FastAPI
+      |-- Notification Svc   Go
       |
       v
 PostgreSQL
@@ -80,6 +82,7 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 | Alert Service | Go | 5003 | Alert lifecycle, deduplication, auto-resolution, Alertmanager webhook |
 | Rule Service | Go | 5004 | Dynamic rule CRUD and Prometheus rule generation |
 | Report Service | Python FastAPI | 8000 | Reports and summary APIs |
+| Notification Service | Go | 8090 | Email/webhook channels, delivery history, retries |
 | Prometheus | Prometheus | 9090 | Metrics scraping and alert rule evaluation |
 | Alertmanager | Alertmanager | 9093 | Alert routing and webhook delivery |
 | Grafana | Grafana | 3001 | Metrics visualization |
@@ -104,8 +107,10 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 11. Alertmanager receives firing/resolved alerts.
 12. Alertmanager sends webhook to Alert Service.
 13. Alert Service stores alert lifecycle in PostgreSQL.
-14. Report Service returns dashboard summaries.
-15. Grafana visualizes runtime and business metrics.
+14. Alert Service sends notification-worthy events to Notification Service.
+15. Notification Service delivers email/webhook notifications and records delivery history.
+16. Report Service returns dashboard summaries.
+17. Grafana visualizes runtime and business metrics.
 ```
 
 ---
@@ -138,6 +143,7 @@ ADMIN can create assets and manage rules.
 | Asset Service | http://localhost:5001 |
 | Telemetry Service | http://localhost:5002 |
 | Alert Service | http://localhost:5003 |
+| Notification Service | http://localhost:8090 |
 | Rule Service | http://localhost:5004 |
 | Report Service | http://localhost:8000 |
 | Prometheus | http://localhost:9090 |
@@ -229,6 +235,7 @@ AUTH_SERVICE_PORT=4001
 ASSET_SERVICE_PORT=5001
 TELEMETRY_SERVICE_PORT=5002
 ALERT_SERVICE_PORT=5003
+NOTIFICATION_SERVICE_PORT=8090
 RULE_SERVICE_PORT=5004
 REPORT_SERVICE_PORT=8000
 DASHBOARD_PORT=3000
@@ -239,8 +246,15 @@ AUTH_SERVICE_URL=http://auth-service:4001
 ASSET_SERVICE_URL=http://asset-service:5001
 TELEMETRY_SERVICE_URL=http://telemetry-service:5002
 ALERT_SERVICE_URL=http://alert-service:5003
+NOTIFICATION_SERVICE_URL=http://notification-service:8090
 RULE_SERVICE_URL=http://rule-service:5004
 REPORT_SERVICE_URL=http://report-service:8000
+
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
 
 ENABLE_DIRECT_ALERTING=false
 
@@ -249,6 +263,33 @@ PROMETHEUS_RELOAD_URL=http://prometheus:9090/-/reload
 ```
 
 Do not commit the real `.env` file.
+
+Notification email delivery requires `SMTP_HOST` and `SMTP_FROM`. If SMTP is not configured, email delivery fails gracefully and the failed attempt is recorded in notification history.
+
+Create a webhook notification channel through the API Gateway:
+
+```bash
+curl -X POST http://localhost:4000/api/notification-channels \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Local Webhook",
+    "type": "WEBHOOK",
+    "target": "http://host.docker.internal:9000/webhook",
+    "enabled": true
+  }'
+```
+
+Create an email notification channel:
+
+```json
+{
+  "name": "Ops Email",
+  "type": "EMAIL",
+  "target": "ops@example.com",
+  "enabled": true
+}
+```
 
 ---
 

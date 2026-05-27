@@ -476,6 +476,55 @@ button:disabled {
   grid-template-columns: repeat(6, 1fr);
 }
 
+.notifications-summary-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.notification-form {
+  grid-template-columns: 1.2fr 0.8fr 1.6fr 0.7fr 1fr;
+}
+
+.notification-form .field-error {
+  grid-column: 1 / -1;
+}
+
+.notification-filters {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.wide-cell {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
+.error-cell {
+  max-width: 260px;
+  color: #a40000;
+  overflow-wrap: anywhere;
+}
+
+.status-sent {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.status-failed {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
+.status-pending {
+  background: #fff0cc;
+  color: #8a5a00;
+}
+
 .incident-panel {
   margin-top: 24px;
 }
@@ -548,11 +597,19 @@ button:disabled {
   .incidents-summary-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .notifications-summary-grid,
+  .notification-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 700px) {
   .rules-summary-grid,
   .incidents-summary-grid,
+  .notifications-summary-grid,
+  .notification-form,
+  .notification-filters,
   .filters-row {
     grid-template-columns: 1fr;
   }

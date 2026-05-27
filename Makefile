@@ -1,5 +1,5 @@
 .PHONY: help up down restart build config logs ps health clean seed test e2e \
-        logs-gateway logs-auth logs-asset logs-telemetry logs-alert logs-rule logs-report \
+        logs-gateway logs-auth logs-asset logs-telemetry logs-alert logs-notification logs-rule logs-report \
         logs-prometheus logs-alertmanager logs-grafana \
         test-api test-metrics db-shell rules reload-prometheus
 
@@ -31,6 +31,7 @@ help:
 	@echo "  make logs-asset"
 	@echo "  make logs-telemetry"
 	@echo "  make logs-alert"
+	@echo "  make logs-notification"
 	@echo "  make logs-rule"
 	@echo "  make logs-report"
 	@echo "  make logs-prometheus"
@@ -69,6 +70,8 @@ health:
 	@curl -s http://localhost:5002/health || true
 	@echo "\nAlert Service:"
 	@curl -s http://localhost:5003/health || true
+	@echo "\nNotification Service:"
+	@curl -s http://localhost:8090/health || true
 	@echo "\nRule Service:"
 	@curl -s http://localhost:5004/health || true
 	@echo "\nReport Service:"
@@ -94,6 +97,9 @@ logs-telemetry:
 logs-alert:
 	docker logs -f monitoring-alert-service
 
+logs-notification:
+	docker logs -f monitoring-notification-service
+
 logs-rule:
 	docker logs -f monitoring-rule-service
 
@@ -116,6 +122,8 @@ test:
 	cd services/telemetry-service && go test ./...
 	@echo "Running Alert Service tests..."
 	cd services/alert-service && go test ./...
+	@echo "Running Notification Service tests..."
+	cd services/notification-service && go test ./...
 	@echo "Running Rule Service tests..."
 	cd services/rule-service && go test ./...
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "./App.css";
 import IncidentsPage from "./pages/IncidentsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import RulesPage from "./pages/RulesPage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
@@ -9,6 +10,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000
 function pageFromPath(pathname) {
   if (pathname === "/rules") return "rules";
   if (pathname === "/incidents") return "incidents";
+  if (pathname === "/notifications") return "notifications";
   return "dashboard";
 }
 
@@ -264,6 +266,13 @@ function App() {
             Incidents
           </button>
 
+          <button
+            className={activePage === "notifications" ? "active" : "secondary"}
+            onClick={() => navigate("notifications")}
+          >
+            Notifications
+          </button>
+
           <button onClick={refreshActivePage}>Refresh</button>
 
           <button className="secondary" onClick={logout}>
@@ -276,6 +285,8 @@ function App() {
         <RulesPage refreshSignal={refreshSignal} />
       ) : activePage === "incidents" ? (
         <IncidentsPage refreshSignal={refreshSignal} />
+      ) : activePage === "notifications" ? (
+        <NotificationsPage refreshSignal={refreshSignal} />
       ) : (
         <DashboardPage
           summary={summary}
