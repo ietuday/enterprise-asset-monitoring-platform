@@ -8,6 +8,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
 // Initialize Express app
@@ -35,6 +36,22 @@ const RULE_SERVICE_URL =
   process.env.RULE_SERVICE_URL || "http://localhost:5004";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+
+const apiRateLimiter = rateLimit({
+  windowMs: Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.API_RATE_LIMIT_MAX || 300),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "too many requests" },
+});
+
+const authRateLimiter = rateLimit({
+  windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 50),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "too many authentication requests" },
+});
 
 // Middleware
 app.use(helmet());
@@ -124,6 +141,7 @@ function authorizeRoles(...allowedRoles) {
  */
 app.use(
   "/api/auth",
+  authRateLimiter,
   createProxyMiddleware({
     target: AUTH_SERVICE_URL,
     changeOrigin: true,
@@ -140,6 +158,7 @@ app.use(
  */
 app.use(
   "/api/assets",
+  apiRateLimiter,
   authenticate,
   (req, res, next) => {
     if (req.method === "GET") {
@@ -164,6 +183,7 @@ app.use(
  */
 app.use(
   "/api/telemetry",
+  apiRateLimiter,
   authenticate,
   (req, res, next) => {
     if (req.method === "GET") {
@@ -187,6 +207,7 @@ app.use(
  */
 app.use(
   "/api/alerts",
+  apiRateLimiter,
   authenticate,
   (req, res, next) => {
     if (req.method === "GET") {
@@ -211,6 +232,7 @@ app.use(
  */
 app.use(
   "/api/incidents",
+  apiRateLimiter,
   authenticate,
   (req, res, next) => {
     if (req.method === "GET") {
@@ -235,6 +257,7 @@ app.use(
  */
 app.use(
   "/api/reports",
+  apiRateLimiter,
   authenticate,
   authorizeRoles("ADMIN", "OPERATOR", "VIEWER"),
   createProxyMiddleware({
@@ -253,6 +276,7 @@ app.use(
  */
 app.use(
   "/api/rules",
+  apiRateLimiter,
   authenticate,
   (req, res, next) => {
     if (req.method === "GET") {
