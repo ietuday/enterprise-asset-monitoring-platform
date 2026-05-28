@@ -956,6 +956,20 @@ The E2E test validates:
 
 ---
 
+## 23. SonarQube CI Analysis
+
+The repository includes a SonarQube/SonarCloud workflow at `.github/workflows/sonarqube.yml`.
+It runs on pushes and pull requests targeting `master` and `develop`, generates Go and dashboard coverage, and scans `services`, `web`, and `scripts`.
+
+Configure these GitHub repository secrets before enabling the workflow:
+
+- `SONAR_TOKEN`
+- `SONAR_HOST_URL`
+
+The optional quality gate step is included in the workflow and can be removed or commented if the SonarQube/SonarCloud setup does not support waiting for a gate result from GitHub Actions.
+
+---
+
 ## 24. Interview Explanation
 
 This project can be explained as:
