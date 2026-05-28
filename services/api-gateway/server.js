@@ -35,6 +35,9 @@ const REPORT_SERVICE_URL =
 const RULE_SERVICE_URL =
   process.env.RULE_SERVICE_URL || "http://localhost:5004";
 
+const NOTIFICATION_SERVICE_URL =
+  process.env.NOTIFICATION_SERVICE_URL || "http://notification-service:8090";
+
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 const apiRateLimiter = rateLimit({
@@ -294,6 +297,60 @@ app.use(
   })
 );
 
+/**
+ * Protected Notification Channel Routes
+ * - GET /api/notification-channels -> ADMIN, OPERATOR, VIEWER
+ * - POST/PUT/PATCH/DELETE /api/notification-channels -> ADMIN, OPERATOR
+ */
+app.use(
+  "/api/notification-channels",
+  apiRateLimiter,
+  authenticate,
+  (req, res, next) => {
+    if (req.method === "GET") {
+      return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+    }
+
+    return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
+  },
+  createProxyMiddleware({
+    target: NOTIFICATION_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/notification-channels" : `/notification-channels${path}`;
+    },
+  })
+);
+
+/**
+ * Protected Notification Routes
+ * - GET /api/notifications/history -> ADMIN, OPERATOR, VIEWER
+ * - POST /api/notifications/send, /test, /{id}/retry -> ADMIN, OPERATOR
+ */
+app.use(
+  "/api/notifications",
+  apiRateLimiter,
+  authenticate,
+  (req, res, next) => {
+    const isHistoryRead =
+      req.method === "GET" &&
+      (req.path === "/history" || req.path.startsWith("/history/"));
+
+    if (isHistoryRead) {
+      return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+    }
+
+    return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
+  },
+  createProxyMiddleware({
+    target: NOTIFICATION_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/notifications" : `/notifications${path}`;
+    },
+  })
+);
+
 app.use((req, res) => {
   res.status(404).json({
     error: "route not found",
@@ -313,6 +370,7 @@ async function startServer() {
       console.log(`alert-service: ${ALERT_SERVICE_URL}`);
       console.log(`report-service: ${REPORT_SERVICE_URL}`);
       console.log(`rule-service: ${RULE_SERVICE_URL}`);
+      console.log(`notification-service: ${NOTIFICATION_SERVICE_URL}`);
     });
   } catch (err) {
     console.error("failed to start api-gateway:", err);
