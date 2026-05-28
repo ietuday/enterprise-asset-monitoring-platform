@@ -58,7 +58,7 @@ service_exists_in_list() {
   shift
 
   for item in "$@"; do
-    if [ "$item" = "$service" ]; then
+    if [[ "$item" == "$service" ]]; then
       return 0
     fi
   done
@@ -66,7 +66,7 @@ service_exists_in_list() {
   return 1
 }
 
-if [ "$SERVICE" = "all" ]; then
+if [[ "$SERVICE" == "all" ]]; then
   echo "Stopping all containers..."
   docker compose down --remove-orphans
 
@@ -78,13 +78,13 @@ if [ "$SERVICE" = "all" ]; then
   echo "Starting all services..."
   docker compose up -d
 
-elif [ "$SERVICE" = "app" ]; then
+elif [[ "$SERVICE" == "app" ]]; then
   echo "Reloading all application services..."
   for service in "${APP_SERVICES[@]}"; do
     reload_service "$service"
   done
 
-elif [ "$SERVICE" = "infra" ]; then
+elif [[ "$SERVICE" == "infra" ]]; then
   echo "Reloading infrastructure services..."
   for service in "${INFRA_SERVICES[@]}"; do
     reload_service "$service"
