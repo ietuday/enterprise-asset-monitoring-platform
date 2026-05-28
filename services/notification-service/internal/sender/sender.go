@@ -3,20 +3,18 @@ package sender
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"net/mail"
-	"net/smtp"
 	"strconv"
 	"strings"
 	"time"
 
 	"notification-service/internal/models"
+
+	gomail "gopkg.in/gomail.v2"
 )
 
 type Sender interface {
@@ -116,24 +114,20 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 		port = "587"
 	}
 
-	if _, err := strconv.Atoi(port); err != nil {
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
 		return fmt.Errorf("invalid SMTP port: %s", port)
 	}
 
-	message, fromAddress, toAddress, err := buildEmailMessage(s.config.From, channel.Target, req.Subject, req.Message)
+	message, err := newEmailMessage(s.config.From, channel.Target, req.Subject, req.Message)
 	if err != nil {
 		return err
 	}
 
-	addr := s.config.Host + ":" + port
-	var auth smtp.Auth
-	if s.config.User != "" || s.config.Password != "" {
-		auth = smtp.PlainAuth("", s.config.User, s.config.Password, s.config.Host)
-	}
-
+	dialer := gomail.NewDialer(s.config.Host, portNumber, s.config.User, s.config.Password)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- sendSMTPMail(ctx, addr, s.config.Host, auth, fromAddress, []string{toAddress}, message)
+		errCh <- dialer.DialAndSend(message)
 	}()
 
 	select {
@@ -144,111 +138,24 @@ func (s *EmailSender) Send(ctx context.Context, channel models.NotificationChann
 	}
 }
 
-func sendSMTPMail(ctx context.Context, addr string, serverName string, auth smtp.Auth, from string, recipients []string, message []byte) error {
-	dialer := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		return err
-	}
-
-	client, err := smtp.NewClient(conn, serverName)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		tlsConfig := &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: serverName,
-		}
-		if err := client.StartTLS(tlsConfig); err != nil {
-			return err
-		}
-	}
-
-	if auth != nil {
-		if ok, _ := client.Extension("AUTH"); ok {
-			if err := client.Auth(auth); err != nil {
-				return err
-			}
-		} else {
-			return errors.New("smtp: server doesn't support AUTH")
-		}
-	}
-
-	if err := client.Mail(from); err != nil {
-		return err
-	}
-
-	for _, recipient := range recipients {
-		if err := client.Rcpt(recipient); err != nil {
-			return err
-		}
-	}
-
-	writer, err := client.Data()
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(writer, bytes.NewReader(message)); err != nil {
-		writer.Close()
-		return err
-	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-
-	if err := client.Quit(); err != nil && !errors.Is(err, io.EOF) {
-		return err
-	}
-
-	return nil
-}
-
-type emailHeader struct {
-	name  string
-	value string
-}
-
-func buildEmailMessage(from string, to string, subject string, body string) ([]byte, string, string, error) {
+func newEmailMessage(from string, to string, subject string, body string) (*gomail.Message, error) {
 	fromAddress, err := validateEmailAddress(from)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("invalid from address: %w", err)
+		return nil, fmt.Errorf("invalid from address: %w", err)
 	}
 
 	toAddress, err := validateEmailAddress(to)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("invalid recipient address: %w", err)
+		return nil, fmt.Errorf("invalid recipient address: %w", err)
 	}
 
-	headers := []emailHeader{
-		{name: "From", value: sanitizeEmailHeader(from)},
-		{name: "To", value: sanitizeEmailHeader(to)},
-		{name: "Subject", value: sanitizeEmailHeader(subject)},
-		{name: "MIME-Version", value: "1.0"},
-		{name: "Content-Type", value: "text/plain; charset=UTF-8"},
-	}
+	message := gomail.NewMessage()
+	message.SetHeader("From", sanitizeEmailHeader(fromAddress))
+	message.SetHeader("To", sanitizeEmailHeader(toAddress))
+	message.SetHeader("Subject", sanitizeEmailHeader(subject))
+	message.SetBody("text/plain", sanitizeEmailBody(body))
 
-	message := bytes.Buffer{}
-	for _, header := range headers {
-		message.WriteString(header.name)
-		message.WriteString(": ")
-		message.WriteString(header.value)
-		message.WriteString("\r\n")
-	}
-
-	message.WriteString("\r\n")
-	message.WriteString(sanitizeEmailBody(body))
-	message.WriteString("\r\n")
-
-	return message.Bytes(), fromAddress, toAddress, nil
+	return message, nil
 }
 
 func sanitizeEmailHeader(value string) string {
@@ -280,7 +187,7 @@ func sanitizeEmailBody(value string) string {
 		}
 	}
 
-	return strings.ReplaceAll(builder.String(), "\n", "\r\n")
+	return builder.String()
 }
 
 func validateEmailAddress(value string) (string, error) {
