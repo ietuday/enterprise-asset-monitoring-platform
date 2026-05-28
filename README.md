@@ -920,6 +920,50 @@ The E2E test validates:
 - Alert auto-resolution
 - Report summary API
 
+### Automated E2E Testing
+
+The `tests/e2e` suite is now UI-driven by default. The Playwright UI flow exercises the dashboard user experience and validates API Gateway and backend services through real user interactions.
+
+Default smoke tests:
+
+- `npm run test:api:smoke` — minimal API smoke validation for auth and notification delivery flow
+- `npm run test:ui` — full platform flow through the dashboard UI
+
+Deep API tests are available separately:
+
+- `npm run test:api:deep`
+
+Prerequisites:
+
+- Docker
+- Docker Compose
+- Node.js 20.19+
+- npm
+
+Run locally:
+
+```bash
+docker compose up -d --build
+./tests/e2e/wait-for-services.sh
+./scripts/seed.sh
+
+cd tests/e2e
+npm ci
+npx playwright install --with-deps chromium
+npm run test:api:smoke
+npm run test:ui
+```
+
+Or run both suites:
+
+```bash
+npm test
+```
+
+For a clean local reset and validation, use `./scripts/e2e-reset-run.sh`, but note this deletes local Docker volumes.
+
+The UI-driven E2E flow covers login, rule and notification channel creation, telemetry ingestion, incident visibility, notifications history, and SLA page validation. API smoke tests keep the gateway stable, while deep API polling tests are kept out of the default CI path.
+
 ---
 
 ## 22. Tech Stack

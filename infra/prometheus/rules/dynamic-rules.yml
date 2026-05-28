@@ -32,3 +32,93 @@ groups:
           description: "Dynamic rule High Memory Usage triggered for asset {{ $labels.asset_id }}"
           asset_id: "{{ $labels.asset_id }}"
           alert_name: "High Memory Usage"
+      - alert: E2ECriticalTemperature1779956534386858440uke7yu7f
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779956534386-858440-uke7yu7f"
+          description: "Dynamic rule E2E Critical Temperature 1779956534386-858440-uke7yu7f triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779956534386-858440-uke7yu7f"
+      - alert: E2ECriticalTemperature17799565993148602010esbqtqq
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779956599314-860201-0esbqtqq"
+          description: "Dynamic rule E2E Critical Temperature 1779956599314-860201-0esbqtqq triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779956599314-860201-0esbqtqq"
+      - alert: E2ECriticalTemperature1779956661209861722mkvqhi29
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779956661209-861722-mkvqhi29"
+          description: "Dynamic rule E2E Critical Temperature 1779956661209-861722-mkvqhi29 triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779956661209-861722-mkvqhi29"
+      - alert: E2ECriticalTemperature1779956863668865816f2omaf3a
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779956863668-865816-f2omaf3a"
+          description: "Dynamic rule E2E Critical Temperature 1779956863668-865816-f2omaf3a triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779956863668-865816-f2omaf3a"
+      - alert: E2ECriticalTemperature1779956970897866795ftmvoc97
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779956970897-866795-ftmvoc97"
+          description: "Dynamic rule E2E Critical Temperature 1779956970897-866795-ftmvoc97 triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779956970897-866795-ftmvoc97"
+      - alert: E2ECriticalTemperature1779957076165867712o3r3uqdz
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "E2E Critical Temperature 1779957076165-867712-o3r3uqdz"
+          description: "Dynamic rule E2E Critical Temperature 1779957076165-867712-o3r3uqdz triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "E2E Critical Temperature 1779957076165-867712-o3r3uqdz"
+      - alert: HighTemperature
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High Temperature"
+          description: "Dynamic rule High Temperature triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Temperature"
+      - alert: HighCPUUsage
+        expr: asset_cpu_usage_percent > 85.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "High CPU Usage"
+          description: "Dynamic rule High CPU Usage triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High CPU Usage"
+      - alert: HighMemoryUsage
+        expr: asset_memory_usage_percent > 90.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "High Memory Usage"
+          description: "Dynamic rule High Memory Usage triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Memory Usage"

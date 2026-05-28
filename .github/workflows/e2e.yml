@@ -1,0 +1,88 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: API and UI E2E
+    runs-on: ubuntu-latest
+
+    env:
+      API_RATE_LIMIT_MAX: 10000
+      AUTH_RATE_LIMIT_MAX: 1000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20.19.0"
+          cache: "npm"
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Prepare environment
+        run: |
+          if [ ! -f .env ]; then
+            cp .env.example .env
+          fi
+
+      - name: Start services
+        run: |
+          docker compose up -d --build
+
+      - name: Wait for services
+        run: |
+          chmod +x tests/e2e/wait-for-services.sh
+          ./tests/e2e/wait-for-services.sh
+
+      - name: Seed default data
+        run: |
+          chmod +x scripts/seed.sh
+          ./scripts/seed.sh
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run API smoke tests
+        working-directory: tests/e2e
+        run: npm run test:api:smoke
+
+      - name: Run UI E2E tests
+        working-directory: tests/e2e
+        run: npm run test:ui
+
+      - name: Collect Docker Compose logs
+        if: failure()
+        run: docker compose logs > docker-compose-e2e.log
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            docker-compose-e2e.log
+            tests/e2e/ui/playwright-report
+            tests/e2e/ui/test-results
+          if-no-files-found: ignore
+
+      - name: Cleanup services
+        if: always()
+        run: docker compose down --remove-orphans

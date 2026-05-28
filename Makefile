@@ -1,7 +1,7 @@
 .PHONY: help up down restart build config logs ps health clean seed test e2e \
         logs-gateway logs-auth logs-asset logs-telemetry logs-alert logs-notification logs-rule logs-report \
         logs-prometheus logs-alertmanager logs-grafana \
-        test-api test-metrics db-shell rules reload-prometheus
+        test-api test-metrics test.e2e test.e2e.api test.e2e.ui test.e2e.sla.slow db-shell rules reload-prometheus
 
 help:
 	@echo "Enterprise Asset Monitoring Platform"
@@ -17,6 +17,10 @@ help:
 	@echo "  make health              Run service health checks"
 	@echo "  make test                Run Go service tests"
 	@echo "  make e2e                 Run end-to-end smoke test"
+	@echo "  make test.e2e            Run automated API and UI E2E tests"
+	@echo "  make test.e2e.api        Run automated API E2E tests"
+	@echo "  make test.e2e.ui         Run automated UI E2E tests"
+	@echo "  make test.e2e.sla.slow   Run optional slow SLA E2E tests"
 	@echo "  make test-api            Run basic API checks"
 	@echo "  make test-metrics        Check Prometheus metrics endpoints"
 	@echo "  make seed                Seed default users and sample assets"
@@ -129,6 +133,18 @@ test:
 
 e2e:
 	./scripts/e2e-smoke-test.sh
+
+test.e2e:
+	cd tests/e2e && npm ci && npm test
+
+test.e2e.api:
+	cd tests/e2e && npm ci && npm run test:api
+
+test.e2e.ui:
+	cd tests/e2e && npm ci && npm run test:ui
+
+test.e2e.sla.slow:
+	cd tests/e2e && npm ci && npm run test:sla:slow
 
 test-api:
 	@echo "Testing API Gateway..."
