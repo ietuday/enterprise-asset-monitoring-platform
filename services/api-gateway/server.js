@@ -231,7 +231,9 @@ app.use(
 /**
  * Protected Incident Routes
  * - GET /api/incidents -> ADMIN, OPERATOR, VIEWER
- * - POST/PUT /api/incidents -> ADMIN, OPERATOR only
+ * - GET /api/incidents/:id/sla -> ADMIN, OPERATOR, VIEWER
+ * - GET /api/incidents/:id/escalations -> ADMIN, OPERATOR, VIEWER
+ * - POST/PUT /api/incidents and /api/incidents/:id/escalate -> ADMIN, OPERATOR only
  */
 app.use(
   "/api/incidents",
@@ -249,6 +251,49 @@ app.use(
     changeOrigin: true,
     pathRewrite: (path) => {
       return path === "/" ? "/incidents" : `/incidents${path}`;
+    },
+  })
+);
+
+/**
+ * Protected SLA Policy Routes
+ * - GET /api/sla-policies -> ADMIN, OPERATOR, VIEWER
+ * - POST/PUT/DELETE /api/sla-policies -> ADMIN only
+ */
+app.use(
+  "/api/sla-policies",
+  apiRateLimiter,
+  authenticate,
+  (req, res, next) => {
+    if (req.method === "GET") {
+      return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+    }
+
+    return authorizeRoles("ADMIN")(req, res, next);
+  },
+  createProxyMiddleware({
+    target: ALERT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/sla-policies" : `/sla-policies${path}`;
+    },
+  })
+);
+
+/**
+ * Protected SLA Breach Routes
+ * - GET /api/sla-breaches -> ADMIN, OPERATOR, VIEWER
+ */
+app.use(
+  "/api/sla-breaches",
+  apiRateLimiter,
+  authenticate,
+  authorizeRoles("ADMIN", "OPERATOR", "VIEWER"),
+  createProxyMiddleware({
+    target: ALERT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/sla-breaches" : `/sla-breaches${path}`;
     },
   })
 );

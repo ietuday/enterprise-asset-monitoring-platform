@@ -33,6 +33,21 @@ type AlertRepository interface {
 	CloseIncident(ctx context.Context, id string, actor string, comment string) (*models.Incident, error)
 	GetIncidentHistory(ctx context.Context, incidentID string) ([]models.IncidentHistory, error)
 	AddIncidentHistory(ctx context.Context, history *models.IncidentHistory) error
+	CreateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error
+	ListSLAPolicies(ctx context.Context) ([]models.SLAPolicy, error)
+	GetSLAPolicyByID(ctx context.Context, id string) (*models.SLAPolicy, error)
+	GetEnabledSLAPolicyBySeverity(ctx context.Context, severity string) (*models.SLAPolicy, error)
+	UpdateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error
+	DeleteSLAPolicy(ctx context.Context, id string) error
+	GetIncidentSLA(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error)
+	GetIncidentSLAByIncidentID(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error)
+	UpdateSLAStatus(ctx context.Context, incidentID int64, status string) error
+	MarkEscalated(ctx context.Context, incidentID int64) error
+	ListSLABreaches(ctx context.Context, filters models.SLABreachFilters) ([]models.IncidentSLATracking, error)
+	ListSLARecordsDueForCheck(ctx context.Context) ([]models.IncidentSLATracking, error)
+	CreateEscalationHistory(ctx context.Context, escalation *models.EscalationHistory) error
+	ListEscalationsByIncidentID(ctx context.Context, incidentID string) ([]models.EscalationHistory, error)
+	ExistsEscalationForIncidentAction(ctx context.Context, incidentID int64, action string) (bool, error)
 }
 
 type AlertHandler struct {
@@ -80,6 +95,14 @@ type incidentActionRequest struct {
 	Actor          string `json:"actor"`
 	Comment        string `json:"comment"`
 	ResolutionNote string `json:"resolution_note"`
+}
+
+type slaPolicyRequest struct {
+	Severity                 string `json:"severity"`
+	AcknowledgeWithinMinutes int    `json:"acknowledge_within_minutes"`
+	ResolveWithinMinutes     int    `json:"resolve_within_minutes"`
+	EscalationTarget         string `json:"escalation_target"`
+	Enabled                  *bool  `json:"enabled"`
 }
 
 func NewAlertHandler(repo AlertRepository, notificationClients ...NotificationClient) *AlertHandler {
@@ -579,6 +602,219 @@ func (h *AlertHandler) GetIncidentHistory(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, history)
 }
 
+func (h *AlertHandler) CreateSLAPolicy(w http.ResponseWriter, r *http.Request) {
+	var req slaPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	policy, err := policyFromRequest(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if err := h.repo.CreateSLAPolicy(r.Context(), &policy); err != nil {
+		if err.Error() == "conflict" {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "SLA policy already exists for severity"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, policy)
+}
+
+func (h *AlertHandler) ListSLAPolicies(w http.ResponseWriter, r *http.Request) {
+	policies, err := h.repo.ListSLAPolicies(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, policies)
+}
+
+func (h *AlertHandler) GetSLAPolicyByID(w http.ResponseWriter, r *http.Request) {
+	policy, err := h.repo.GetSLAPolicyByID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "SLA policy not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, policy)
+}
+
+func (h *AlertHandler) UpdateSLAPolicy(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid SLA policy id"})
+		return
+	}
+
+	var req slaPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	policy, err := policyFromRequest(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	policy.ID = id
+
+	if err := h.repo.UpdateSLAPolicy(r.Context(), &policy); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "SLA policy not found"})
+			return
+		}
+		if err.Error() == "conflict" {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "SLA policy already exists for severity"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, policy)
+}
+
+func (h *AlertHandler) DeleteSLAPolicy(w http.ResponseWriter, r *http.Request) {
+	if err := h.repo.DeleteSLAPolicy(r.Context(), chi.URLParam(r, "id")); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "SLA policy not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AlertHandler) GetIncidentSLA(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := h.repo.GetIncidentByID(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "incident not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tracking, err := h.repo.GetIncidentSLA(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, tracking)
+}
+
+func (h *AlertHandler) ListSLABreaches(w http.ResponseWriter, r *http.Request) {
+	filters := models.SLABreachFilters{
+		Status:     strings.ToUpper(r.URL.Query().Get("status")),
+		Severity:   strings.ToUpper(r.URL.Query().Get("severity")),
+		IncidentID: r.URL.Query().Get("incident_id"),
+	}
+	if filters.Status != "" && !isValidSLAStatus(filters.Status) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status filter"})
+		return
+	}
+	if filters.Severity != "" && !isValidSeverity(filters.Severity) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid severity filter"})
+		return
+	}
+
+	items, err := h.repo.ListSLABreaches(r.Context(), filters)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *AlertHandler) EscalateIncident(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	incident, err := h.repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "incident not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var req models.ManualEscalationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	req.Target = strings.TrimSpace(req.Target)
+	req.Actor = strings.TrimSpace(req.Actor)
+	req.Reason = strings.TrimSpace(req.Reason)
+
+	if req.Target == "" {
+		if policy, err := h.repo.GetEnabledSLAPolicyBySeverity(r.Context(), incident.Severity); err == nil {
+			req.Target = policy.EscalationTarget
+		}
+	}
+	if req.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target is required"})
+		return
+	}
+	if req.Actor == "" {
+		req.Actor = "system"
+	}
+	if req.Reason == "" {
+		req.Reason = "Manual escalation"
+	}
+
+	escalation := models.EscalationHistory{
+		IncidentID: incident.ID,
+		Action:     models.EscalationActionIncidentEscalated,
+		Reason:     req.Reason,
+		Target:     req.Target,
+		Actor:      req.Actor,
+	}
+	if err := h.repo.CreateEscalationHistory(r.Context(), &escalation); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := h.repo.MarkEscalated(r.Context(), incident.ID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	h.notifyEscalation(r.Context(), *incident, escalation)
+	writeJSON(w, http.StatusCreated, escalation)
+}
+
+func (h *AlertHandler) ListIncidentEscalations(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := h.repo.GetIncidentByID(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "incident not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	items, err := h.repo.ListEscalationsByIncidentID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
 func (h *AlertHandler) createIncidentForCriticalAlert(ctx context.Context, alert models.Alert) error {
 	if strings.ToUpper(alert.Severity) != models.SeverityCritical {
 		return nil
@@ -624,6 +860,53 @@ func isValidSeverity(severity string) bool {
 	default:
 		return false
 	}
+}
+
+func isValidSLAStatus(status string) bool {
+	switch status {
+	case models.SLAStatusOnTrack,
+		models.SLAStatusAckBreached,
+		models.SLAStatusResolutionBreached,
+		models.SLAStatusEscalated,
+		models.SLAStatusCompleted,
+		models.SLAStatusNoPolicy:
+		return true
+	default:
+		return false
+	}
+}
+
+func policyFromRequest(req slaPolicyRequest) (models.SLAPolicy, error) {
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	policy := models.SLAPolicy{
+		Severity:                 strings.ToUpper(strings.TrimSpace(req.Severity)),
+		AcknowledgeWithinMinutes: req.AcknowledgeWithinMinutes,
+		ResolveWithinMinutes:     req.ResolveWithinMinutes,
+		EscalationTarget:         strings.TrimSpace(req.EscalationTarget),
+		Enabled:                  enabled,
+	}
+
+	if policy.Severity == "" || !isValidSeverity(policy.Severity) {
+		return policy, errors.New("severity must be CRITICAL, HIGH, MEDIUM or LOW")
+	}
+	if policy.AcknowledgeWithinMinutes <= 0 {
+		return policy, errors.New("acknowledge_within_minutes must be greater than 0")
+	}
+	if policy.ResolveWithinMinutes <= 0 {
+		return policy, errors.New("resolve_within_minutes must be greater than 0")
+	}
+	if policy.ResolveWithinMinutes < policy.AcknowledgeWithinMinutes {
+		return policy, errors.New("resolve_within_minutes must be greater than or equal to acknowledge_within_minutes")
+	}
+	if policy.EscalationTarget == "" {
+		return policy, errors.New("escalation_target is required")
+	}
+
+	return policy, nil
 }
 
 func (h *AlertHandler) writeIncidentActionResponse(w http.ResponseWriter, incident *models.Incident, err error, afterSuccess ...func()) {
@@ -697,6 +980,38 @@ func (h *AlertHandler) notifyIncident(ctx context.Context, eventType string, sub
 		Payload: map[string]any{
 			"status":      incident.Status,
 			"assigned_to": incident.AssignedTo,
+		},
+	})
+}
+
+func (h *AlertHandler) notifyEscalation(ctx context.Context, incident models.Incident, escalation models.EscalationHistory) {
+	if h.notification == nil {
+		return
+	}
+
+	subject := "Incident escalated"
+	message := "Incident #" + strconv.FormatInt(incident.ID, 10) + " was escalated."
+	switch escalation.Action {
+	case models.EscalationActionSLAAckBreached:
+		subject = "Acknowledgement SLA breached"
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " was not acknowledged within SLA."
+	case models.EscalationActionSLAResolutionBreached:
+		subject = "Resolution SLA breached"
+		message = "Incident #" + strconv.FormatInt(incident.ID, 10) + " was not resolved within SLA."
+	}
+
+	h.notification.Send(ctx, notification.SendRequest{
+		EventType:  escalation.Action,
+		Subject:    subject,
+		Message:    message,
+		Severity:   incident.Severity,
+		AssetID:    incident.AssetID,
+		AlertID:    incident.AlertID,
+		IncidentID: notification.IncidentID(incident.ID),
+		Payload: map[string]any{
+			"target": escalation.Target,
+			"reason": escalation.Reason,
+			"actor":  escalation.Actor,
 		},
 	})
 }

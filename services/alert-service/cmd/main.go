@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	alertdb "alert-service/internal/db"
@@ -12,6 +14,7 @@ import (
 	"alert-service/internal/metrics"
 	"alert-service/internal/notification"
 	"alert-service/internal/repository"
+	"alert-service/internal/sla"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -36,6 +39,9 @@ func main() {
 	}
 	if err := alertdb.CreateIncidentTables(ctx, dbpool); err != nil {
 		log.Fatalf("failed to create incident tables: %v", err)
+	}
+	if err := alertdb.CreateSLATables(ctx, dbpool); err != nil {
+		log.Fatalf("failed to create SLA tables: %v", err)
 	}
 
 	alertRepo := repository.NewAlertRepository(dbpool)
@@ -66,6 +72,23 @@ func main() {
 	r.Put("/incidents/{id}/resolve", alertHandler.ResolveIncident)
 	r.Put("/incidents/{id}/close", alertHandler.CloseIncident)
 	r.Get("/incidents/{id}/history", alertHandler.GetIncidentHistory)
+	r.Get("/incidents/{id}/sla", alertHandler.GetIncidentSLA)
+	r.Post("/incidents/{id}/escalate", alertHandler.EscalateIncident)
+	r.Get("/incidents/{id}/escalations", alertHandler.ListIncidentEscalations)
+
+	r.Post("/sla-policies", alertHandler.CreateSLAPolicy)
+	r.Get("/sla-policies", alertHandler.ListSLAPolicies)
+	r.Get("/sla-policies/{id}", alertHandler.GetSLAPolicyByID)
+	r.Put("/sla-policies/{id}", alertHandler.UpdateSLAPolicy)
+	r.Delete("/sla-policies/{id}", alertHandler.DeleteSLAPolicy)
+	r.Get("/sla-breaches", alertHandler.ListSLABreaches)
+
+	if strings.ToLower(getEnv("SLA_WORKER_ENABLED", "true")) != "false" {
+		intervalSeconds := getEnvInt("SLA_CHECK_INTERVAL_SECONDS", 60)
+		worker := sla.NewWorker(alertRepo, notificationClient, time.Duration(intervalSeconds)*time.Second)
+		go worker.Start(ctx)
+		log.Printf("SLA worker enabled with interval %d seconds", intervalSeconds)
+	}
 
 	port := getEnv("PORT", "5003")
 
@@ -83,4 +106,18 @@ func getEnv(key string, fallback string) string {
 	}
 
 	return value
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+
+	return parsed
 }

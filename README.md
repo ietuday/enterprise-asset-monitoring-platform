@@ -22,6 +22,7 @@ It supports:
 - Prometheus-based alert evaluation
 - Alertmanager webhook delivery
 - Notification channel management and alert delivery
+- SLA tracking and escalation workflows
 - Alert lifecycle management
 - Alert deduplication
 - Auto alert resolution
@@ -79,7 +80,7 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 | Auth Service | Node.js | 4001 | Login, register, JWT generation |
 | Asset Service | Go | 5001 | Asset CRUD |
 | Telemetry Service | Go | 5002 | Telemetry ingestion and Prometheus metric exposure |
-| Alert Service | Go | 5003 | Alert lifecycle, deduplication, auto-resolution, Alertmanager webhook |
+| Alert Service | Go | 5003 | Alert lifecycle, incident management, SLA tracking, escalation |
 | Rule Service | Go | 5004 | Dynamic rule CRUD and Prometheus rule generation |
 | Report Service | Python FastAPI | 8000 | Reports and summary APIs |
 | Notification Service | Go | 8090 | Email/webhook channels, delivery history, retries |
@@ -108,9 +109,10 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 12. Alertmanager sends webhook to Alert Service.
 13. Alert Service stores alert lifecycle in PostgreSQL.
 14. Alert Service sends notification-worthy events to Notification Service.
-15. Notification Service delivers email/webhook notifications and records delivery history.
-16. Report Service returns dashboard summaries.
-17. Grafana visualizes runtime and business metrics.
+15. Alert Service tracks SLA deadlines and records escalation history.
+16. Notification Service delivers email/webhook notifications and records delivery history.
+17. Report Service returns dashboard summaries.
+18. Grafana visualizes runtime and business metrics.
 ```
 
 ---
@@ -256,6 +258,9 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
 
+SLA_WORKER_ENABLED=true
+SLA_CHECK_INTERVAL_SECONDS=60
+
 ENABLE_DIRECT_ALERTING=false
 
 PROMETHEUS_RULES_FILE=/etc/prometheus/rules/dynamic-rules.yml
@@ -265,6 +270,8 @@ PROMETHEUS_RELOAD_URL=http://prometheus:9090/-/reload
 Do not commit the real `.env` file.
 
 Notification email delivery requires `SMTP_HOST` and `SMTP_FROM`. If SMTP is not configured, email delivery fails gracefully and the failed attempt is recorded in notification history.
+
+SLA tracking is owned by Alert Service. Create policies through `/api/sla-policies`; incidents receive acknowledgement and resolution deadlines based on severity. The SLA worker runs every `SLA_CHECK_INTERVAL_SECONDS` seconds unless `SLA_WORKER_ENABLED=false`.
 
 Create a webhook notification channel through the API Gateway:
 

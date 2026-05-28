@@ -3,16 +3,20 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"alert-service/internal/models"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AlertRepository struct {
 	db *pgxpool.Pool
 }
+
+var ErrConflict = errors.New("conflict")
 
 func NewAlertRepository(db *pgxpool.Pool) *AlertRepository {
 	return &AlertRepository{db: db}
@@ -304,6 +308,10 @@ func (r *AlertRepository) CreateIncident(ctx context.Context, incident *models.I
 		return err
 	}
 
+	if err := r.createSLATrackingForIncident(ctx, tx, incident); err != nil {
+		return err
+	}
+
 	return tx.Commit(ctx)
 }
 
@@ -371,7 +379,7 @@ func (r *AlertRepository) AssignIncident(ctx context.Context, id string, assigne
 }
 
 func (r *AlertRepository) AcknowledgeIncident(ctx context.Context, id string, actor string, comment string) (*models.Incident, error) {
-	return r.transitionIncident(ctx, id, models.IncidentStatusAcknowledged, actor, comment, func(ctx context.Context, tx pgx.Tx, oldStatus string) (*models.Incident, error) {
+	incident, err := r.transitionIncident(ctx, id, models.IncidentStatusAcknowledged, actor, comment, func(ctx context.Context, tx pgx.Tx, oldStatus string) (*models.Incident, error) {
 		return scanIncident(tx.QueryRow(ctx, `
 			UPDATE incidents
 			SET status = 'ACKNOWLEDGED', acknowledged_at = COALESCE(acknowledged_at, NOW()), updated_at = NOW()
@@ -380,10 +388,19 @@ func (r *AlertRepository) AcknowledgeIncident(ctx context.Context, id string, ac
 				resolution_note, created_at, updated_at, acknowledged_at, resolved_at, closed_at;
 		`, id))
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.UpdateAcknowledgedAt(ctx, incident.ID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	return incident, nil
 }
 
 func (r *AlertRepository) ResolveIncident(ctx context.Context, id string, actor string, resolutionNote string) (*models.Incident, error) {
-	return r.transitionIncident(ctx, id, models.IncidentStatusResolved, actor, resolutionNote, func(ctx context.Context, tx pgx.Tx, oldStatus string) (*models.Incident, error) {
+	incident, err := r.transitionIncident(ctx, id, models.IncidentStatusResolved, actor, resolutionNote, func(ctx context.Context, tx pgx.Tx, oldStatus string) (*models.Incident, error) {
 		return scanIncident(tx.QueryRow(ctx, `
 			UPDATE incidents
 			SET status = 'RESOLVED', resolution_note = $2, resolved_at = NOW(), updated_at = NOW()
@@ -392,6 +409,15 @@ func (r *AlertRepository) ResolveIncident(ctx context.Context, id string, actor 
 				resolution_note, created_at, updated_at, acknowledged_at, resolved_at, closed_at;
 		`, id, resolutionNote))
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.UpdateResolvedAt(ctx, incident.ID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	return incident, nil
 }
 
 func (r *AlertRepository) CloseIncident(ctx context.Context, id string, actor string, comment string) (*models.Incident, error) {
@@ -439,6 +465,300 @@ func (r *AlertRepository) AddIncidentHistory(ctx context.Context, history *model
 	`, history.IncidentID, history.Action, history.OldStatus, history.NewStatus, history.Actor, history.Comment).Scan(&history.ID, &history.CreatedAt)
 }
 
+func (r *AlertRepository) CreateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error {
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO sla_policies (severity, acknowledge_within_minutes, resolve_within_minutes, escalation_target, enabled)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at, updated_at;
+	`, policy.Severity, policy.AcknowledgeWithinMinutes, policy.ResolveWithinMinutes, policy.EscalationTarget, policy.Enabled).Scan(
+		&policy.ID, &policy.CreatedAt, &policy.UpdatedAt,
+	)
+	if isUniqueViolation(err) {
+		return ErrConflict
+	}
+	return err
+}
+
+func (r *AlertRepository) ListSLAPolicies(ctx context.Context) ([]models.SLAPolicy, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, severity, acknowledge_within_minutes, resolve_within_minutes, escalation_target, enabled, created_at, updated_at
+		FROM sla_policies
+		ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END, severity;
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	policies := make([]models.SLAPolicy, 0)
+	for rows.Next() {
+		policy, err := scanSLAPolicy(rows)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, *policy)
+	}
+	return policies, rows.Err()
+}
+
+func (r *AlertRepository) GetSLAPolicyByID(ctx context.Context, id string) (*models.SLAPolicy, error) {
+	return scanSLAPolicy(r.db.QueryRow(ctx, `
+		SELECT id, severity, acknowledge_within_minutes, resolve_within_minutes, escalation_target, enabled, created_at, updated_at
+		FROM sla_policies
+		WHERE id = $1;
+	`, id))
+}
+
+func (r *AlertRepository) GetEnabledSLAPolicyBySeverity(ctx context.Context, severity string) (*models.SLAPolicy, error) {
+	return scanSLAPolicy(r.db.QueryRow(ctx, `
+		SELECT id, severity, acknowledge_within_minutes, resolve_within_minutes, escalation_target, enabled, created_at, updated_at
+		FROM sla_policies
+		WHERE severity = $1 AND enabled = TRUE;
+	`, strings.ToUpper(severity)))
+}
+
+func (r *AlertRepository) UpdateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error {
+	err := r.db.QueryRow(ctx, `
+		UPDATE sla_policies
+		SET severity = $2, acknowledge_within_minutes = $3, resolve_within_minutes = $4,
+			escalation_target = $5, enabled = $6, updated_at = NOW()
+		WHERE id = $1
+		RETURNING created_at, updated_at;
+	`, policy.ID, policy.Severity, policy.AcknowledgeWithinMinutes, policy.ResolveWithinMinutes, policy.EscalationTarget, policy.Enabled).Scan(
+		&policy.CreatedAt, &policy.UpdatedAt,
+	)
+	if isUniqueViolation(err) {
+		return ErrConflict
+	}
+	return err
+}
+
+func (r *AlertRepository) DeleteSLAPolicy(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM sla_policies WHERE id = $1;`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *AlertRepository) CreateIncidentSLATracking(ctx context.Context, incident *models.Incident) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := r.createSLATrackingForIncident(ctx, tx, incident); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *AlertRepository) GetIncidentSLA(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error) {
+	tracking, err := r.GetIncidentSLAByIncidentID(ctx, incidentID)
+	if err == nil {
+		return tracking, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	incident, incidentErr := r.GetIncidentByID(ctx, incidentID)
+	if incidentErr != nil {
+		return nil, incidentErr
+	}
+	if err := r.CreateIncidentSLATracking(ctx, incident); err != nil {
+		return nil, err
+	}
+
+	return r.GetIncidentSLAByIncidentID(ctx, incidentID)
+}
+
+func (r *AlertRepository) GetIncidentSLAByIncidentID(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error) {
+	return scanSLATracking(r.db.QueryRow(ctx, `
+		SELECT id, incident_id, severity, status, acknowledge_due_at, resolve_due_at,
+			acknowledged_at, resolved_at, escalated_at, created_at, updated_at
+		FROM incident_sla_tracking
+		WHERE incident_id = $1;
+	`, incidentID))
+}
+
+func (r *AlertRepository) UpdateAcknowledgedAt(ctx context.Context, incidentID int64) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE incident_sla_tracking
+		SET acknowledged_at = COALESCE(acknowledged_at, NOW()),
+			status = CASE
+				WHEN status IN ('NO_POLICY', 'RESOLUTION_BREACHED', 'ESCALATED', 'COMPLETED') THEN status
+				WHEN acknowledge_due_at IS NOT NULL AND NOW() > acknowledge_due_at THEN 'ACK_BREACHED'
+				ELSE status
+			END,
+			updated_at = NOW()
+		WHERE incident_id = $1;
+	`, incidentID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *AlertRepository) UpdateResolvedAt(ctx context.Context, incidentID int64) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE incident_sla_tracking
+		SET resolved_at = COALESCE(resolved_at, NOW()),
+			status = CASE
+				WHEN status = 'NO_POLICY' THEN status
+				WHEN resolve_due_at IS NOT NULL AND NOW() > resolve_due_at THEN 'RESOLUTION_BREACHED'
+				WHEN status = 'ACK_BREACHED' THEN status
+				WHEN status = 'ESCALATED' THEN status
+				ELSE 'COMPLETED'
+			END,
+			updated_at = NOW()
+		WHERE incident_id = $1;
+	`, incidentID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *AlertRepository) UpdateSLAStatus(ctx context.Context, incidentID int64, status string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE incident_sla_tracking
+		SET status = $2, updated_at = NOW()
+		WHERE incident_id = $1;
+	`, incidentID, status)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *AlertRepository) MarkEscalated(ctx context.Context, incidentID int64) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE incident_sla_tracking
+		SET status = 'ESCALATED', escalated_at = COALESCE(escalated_at, NOW()), updated_at = NOW()
+		WHERE incident_id = $1;
+	`, incidentID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *AlertRepository) ListSLABreaches(ctx context.Context, filters models.SLABreachFilters) ([]models.IncidentSLATracking, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, incident_id, severity, status, acknowledge_due_at, resolve_due_at,
+			acknowledged_at, resolved_at, escalated_at, created_at, updated_at
+		FROM incident_sla_tracking
+		WHERE status IN ('ACK_BREACHED', 'RESOLUTION_BREACHED', 'ESCALATED')
+		AND ($1 = '' OR status = $1)
+		AND ($2 = '' OR severity = $2)
+		AND ($3 = '' OR incident_id::TEXT = $3)
+		ORDER BY updated_at DESC, id DESC;
+	`, filters.Status, filters.Severity, filters.IncidentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.IncidentSLATracking, 0)
+	for rows.Next() {
+		item, err := scanSLATracking(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
+}
+
+func (r *AlertRepository) ListSLARecordsDueForCheck(ctx context.Context) ([]models.IncidentSLATracking, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT s.id, s.incident_id, s.severity, s.status, s.acknowledge_due_at, s.resolve_due_at,
+			s.acknowledged_at, s.resolved_at, s.escalated_at, s.created_at, s.updated_at
+		FROM incident_sla_tracking s
+		JOIN incidents i ON i.id = s.incident_id
+		WHERE i.status NOT IN ('RESOLVED', 'CLOSED')
+		AND s.status NOT IN ('COMPLETED', 'NO_POLICY')
+		AND (
+			(s.acknowledged_at IS NULL AND s.acknowledge_due_at IS NOT NULL AND NOW() > s.acknowledge_due_at)
+			OR (s.resolved_at IS NULL AND s.resolve_due_at IS NOT NULL AND NOW() > s.resolve_due_at)
+		)
+		ORDER BY s.updated_at ASC;
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.IncidentSLATracking, 0)
+	for rows.Next() {
+		item, err := scanSLATracking(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
+}
+
+func (r *AlertRepository) CreateEscalationHistory(ctx context.Context, escalation *models.EscalationHistory) error {
+	return r.db.QueryRow(ctx, `
+		INSERT INTO escalation_history (incident_id, action, reason, target, actor)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at;
+	`, escalation.IncidentID, escalation.Action, escalation.Reason, escalation.Target, escalation.Actor).Scan(&escalation.ID, &escalation.CreatedAt)
+}
+
+func (r *AlertRepository) ListEscalationsByIncidentID(ctx context.Context, incidentID string) ([]models.EscalationHistory, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, incident_id, action, reason, target, actor, created_at
+		FROM escalation_history
+		WHERE incident_id = $1
+		ORDER BY created_at ASC, id ASC;
+	`, incidentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.EscalationHistory, 0)
+	for rows.Next() {
+		item, err := scanEscalationHistory(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
+}
+
+func (r *AlertRepository) ExistsEscalationForIncidentAction(ctx context.Context, incidentID int64, action string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM escalation_history WHERE incident_id = $1 AND action = $2
+		);
+	`, incidentID, action).Scan(&exists)
+	return exists, err
+}
+
 func (r *AlertRepository) transitionIncident(
 	ctx context.Context,
 	id string,
@@ -480,6 +800,47 @@ func (r *AlertRepository) transitionIncident(
 	}
 
 	return incident, nil
+}
+
+func (r *AlertRepository) createSLATrackingForIncident(ctx context.Context, tx pgx.Tx, incident *models.Incident) error {
+	var policy models.SLAPolicy
+	err := tx.QueryRow(ctx, `
+		SELECT id, severity, acknowledge_within_minutes, resolve_within_minutes, escalation_target, enabled, created_at, updated_at
+		FROM sla_policies
+		WHERE severity = $1 AND enabled = TRUE;
+	`, incident.Severity).Scan(
+		&policy.ID,
+		&policy.Severity,
+		&policy.AcknowledgeWithinMinutes,
+		&policy.ResolveWithinMinutes,
+		&policy.EscalationTarget,
+		&policy.Enabled,
+		&policy.CreatedAt,
+		&policy.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO incident_sla_tracking (incident_id, severity, status)
+			VALUES ($1, $2, 'NO_POLICY')
+			ON CONFLICT (incident_id) DO NOTHING;
+		`, incident.ID, incident.Severity)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO incident_sla_tracking (incident_id, severity, status, acknowledge_due_at, resolve_due_at)
+		VALUES ($1, $2, 'ON_TRACK', $3::timestamp + ($4 || ' minutes')::interval, $3::timestamp + ($5 || ' minutes')::interval)
+		ON CONFLICT (incident_id) DO NOTHING;
+	`, incident.ID, incident.Severity, incident.CreatedAt, policy.AcknowledgeWithinMinutes, policy.ResolveWithinMinutes)
+	return err
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 type rowScanner interface {
@@ -530,4 +891,60 @@ func scanIncidentHistory(row rowScanner) (*models.IncidentHistory, error) {
 	}
 
 	return &history, nil
+}
+
+func scanSLAPolicy(row rowScanner) (*models.SLAPolicy, error) {
+	var policy models.SLAPolicy
+	err := row.Scan(
+		&policy.ID,
+		&policy.Severity,
+		&policy.AcknowledgeWithinMinutes,
+		&policy.ResolveWithinMinutes,
+		&policy.EscalationTarget,
+		&policy.Enabled,
+		&policy.CreatedAt,
+		&policy.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &policy, nil
+}
+
+func scanSLATracking(row rowScanner) (*models.IncidentSLATracking, error) {
+	var tracking models.IncidentSLATracking
+	err := row.Scan(
+		&tracking.ID,
+		&tracking.IncidentID,
+		&tracking.Severity,
+		&tracking.Status,
+		&tracking.AcknowledgeDueAt,
+		&tracking.ResolveDueAt,
+		&tracking.AcknowledgedAt,
+		&tracking.ResolvedAt,
+		&tracking.EscalatedAt,
+		&tracking.CreatedAt,
+		&tracking.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &tracking, nil
+}
+
+func scanEscalationHistory(row rowScanner) (*models.EscalationHistory, error) {
+	var escalation models.EscalationHistory
+	err := row.Scan(
+		&escalation.ID,
+		&escalation.IncidentID,
+		&escalation.Action,
+		&escalation.Reason,
+		&escalation.Target,
+		&escalation.Actor,
+		&escalation.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &escalation, nil
 }
