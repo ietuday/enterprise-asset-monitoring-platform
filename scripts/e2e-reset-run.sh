@@ -27,7 +27,7 @@ chmod +x scripts/seed.sh
 
 pushd tests/e2e > /dev/null
 npm ci --ignore-scripts
-npx playwright install --with-deps chromium
+./node_modules/.bin/playwright install --with-deps chromium
 npm run test:api:smoke
 npm run test:ui
 popd > /dev/null
