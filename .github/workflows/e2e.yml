@@ -54,7 +54,7 @@ jobs:
 
       - name: Install E2E dependencies
         working-directory: tests/e2e
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install Playwright Chromium
         working-directory: tests/e2e
