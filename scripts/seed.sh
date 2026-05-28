@@ -105,6 +105,88 @@ create_asset "compressor-101" "Air Compressor 101" "COMPRESSOR" "Mumbai Factory"
 create_asset "boiler-101" "Boiler Machine 101" "MACHINE" "Pune Factory" "ACTIVE"
 
 echo ""
+echo "Creating default rules..."
+
+create_rule() {
+  local name="$1"
+  local metric="$2"
+  local operator="$3"
+  local threshold="$4"
+  local severity="$5"
+
+  echo "Creating rule: $name"
+
+  response=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE_URL/api/rules" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "{
+      \"name\": \"$name\",
+      \"metric\": \"$metric\",
+      \"operator\": \"$operator\",
+      \"threshold\": $threshold,
+      \"severity\": \"$severity\",
+      \"enabled\": true,
+      \"status\": \"active\"
+    }")
+
+  body=$(echo "$response" | sed '$d')
+  status_code=$(echo "$response" | tail -n1)
+
+  if [[ "$status_code" == "201" ]]; then
+    echo "Created rule: $name"
+  elif echo "$body" | grep -qi "duplicate\|already exists"; then
+    echo "Already exists: $name"
+  else
+    echo "Rule response status: $status_code"
+    echo "$body"
+  fi
+}
+
+create_rule "High Temperature" "temperature" ">" 80 "CRITICAL"
+create_rule "High CPU Usage" "cpu" ">" 85 "HIGH"
+create_rule "High Memory Usage" "memory" ">" 90 "HIGH"
+
+echo ""
+echo "Creating default SLA policies..."
+
+create_sla_policy() {
+  local severity="$1"
+  local ack_minutes="$2"
+  local resolve_minutes="$3"
+  local target="$4"
+
+  echo "Creating SLA policy: $severity"
+
+  response=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE_URL/api/sla-policies" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "{
+      \"severity\": \"$severity\",
+      \"acknowledge_within_minutes\": $ack_minutes,
+      \"resolve_within_minutes\": $resolve_minutes,
+      \"escalation_target\": \"$target\",
+      \"enabled\": true
+    }")
+
+  body=$(echo "$response" | sed '$d')
+  status_code=$(echo "$response" | tail -n1)
+
+  if [[ "$status_code" == "201" ]]; then
+    echo "Created SLA policy: $severity"
+  elif [[ "$status_code" == "409" ]]; then
+    echo "Already exists: $severity"
+  else
+    echo "SLA policy response status: $status_code"
+    echo "$body"
+  fi
+}
+
+create_sla_policy "CRITICAL" 5 30 "manager@example.com"
+create_sla_policy "HIGH" 15 120 "ops-lead@example.com"
+create_sla_policy "MEDIUM" 60 480 "support@example.com"
+create_sla_policy "LOW" 240 1440 "support@example.com"
+
+echo ""
 echo "Sending sample telemetry..."
 
 curl -s -X POST "$API_BASE_URL/api/telemetry" \

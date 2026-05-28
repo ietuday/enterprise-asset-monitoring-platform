@@ -12,12 +12,15 @@ import (
 )
 
 const (
-	EventCriticalAlertCreated = "CRITICAL_ALERT_CREATED"
-	EventIncidentCreated      = "INCIDENT_CREATED"
-	EventIncidentAssigned     = "INCIDENT_ASSIGNED"
-	EventIncidentAcknowledged = "INCIDENT_ACKNOWLEDGED"
-	EventIncidentResolved     = "INCIDENT_RESOLVED"
-	EventIncidentClosed       = "INCIDENT_CLOSED"
+	EventCriticalAlertCreated  = "CRITICAL_ALERT_CREATED"
+	EventIncidentCreated       = "INCIDENT_CREATED"
+	EventIncidentAssigned      = "INCIDENT_ASSIGNED"
+	EventIncidentAcknowledged  = "INCIDENT_ACKNOWLEDGED"
+	EventIncidentResolved      = "INCIDENT_RESOLVED"
+	EventIncidentClosed        = "INCIDENT_CLOSED"
+	EventSLAAckBreached        = "SLA_ACK_BREACHED"
+	EventSLAResolutionBreached = "SLA_RESOLUTION_BREACHED"
+	EventIncidentEscalated     = "INCIDENT_ESCALATED"
 )
 
 type SendRequest struct {

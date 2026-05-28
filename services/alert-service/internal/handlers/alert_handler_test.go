@@ -293,6 +293,114 @@ func TestIncidentLifecycleSucceedsWhenNotificationServiceUnavailable(t *testing.
 	}`, "CLOSED")
 }
 
+func TestCreateSLAPolicyValidationAndConflict(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/sla-policies", strings.NewReader(`{
+		"severity": "CRITICAL",
+		"acknowledge_within_minutes": 5,
+		"resolve_within_minutes": 30,
+		"escalation_target": "manager@example.com",
+		"enabled": true
+	}`))
+	rec := httptest.NewRecorder()
+
+	handler.CreateSLAPolicy(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected create policy status %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	duplicateReq := httptest.NewRequest(http.MethodPost, "/sla-policies", strings.NewReader(`{
+		"severity": "CRITICAL",
+		"acknowledge_within_minutes": 5,
+		"resolve_within_minutes": 30,
+		"escalation_target": "manager@example.com"
+	}`))
+	duplicateRec := httptest.NewRecorder()
+	handler.CreateSLAPolicy(duplicateRec, duplicateReq)
+	if duplicateRec.Code != http.StatusConflict {
+		t.Fatalf("expected duplicate policy status %d, got %d", http.StatusConflict, duplicateRec.Code)
+	}
+
+	invalidReq := httptest.NewRequest(http.MethodPost, "/sla-policies", strings.NewReader(`{
+		"severity": "HIGH",
+		"acknowledge_within_minutes": 60,
+		"resolve_within_minutes": 30,
+		"escalation_target": "manager@example.com"
+	}`))
+	invalidRec := httptest.NewRecorder()
+	handler.CreateSLAPolicy(invalidRec, invalidReq)
+	if invalidRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid policy status %d, got %d", http.StatusBadRequest, invalidRec.Code)
+	}
+}
+
+func TestGetIncidentSLAReturnsTracking(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo)
+	incident := models.Incident{
+		AssetID:     "asset-101",
+		Title:       "Critical high temperature",
+		Description: "Temperature crossed critical threshold",
+		Severity:    "CRITICAL",
+	}
+	if err := repo.CreateIncident(nil, &incident, "system", "created"); err != nil {
+		t.Fatalf("failed to seed incident: %v", err)
+	}
+
+	router := chi.NewRouter()
+	router.Get("/incidents/{id}/sla", handler.GetIncidentSLA)
+
+	req := httptest.NewRequest(http.MethodGet, "/incidents/1/sla", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected SLA status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var tracking models.IncidentSLATracking
+	if err := json.NewDecoder(rec.Body).Decode(&tracking); err != nil {
+		t.Fatalf("failed to decode SLA tracking: %v", err)
+	}
+	if tracking.Status != models.SLAStatusNoPolicy {
+		t.Fatalf("expected NO_POLICY tracking, got %+v", tracking)
+	}
+}
+
+func TestManualEscalationCreatesHistoryWhenNotificationUnavailable(t *testing.T) {
+	repo := &fakeAlertRepository{}
+	handler := NewAlertHandler(repo, alertnotification.NewClient("http://127.0.0.1:1", time.Millisecond))
+	incident := models.Incident{
+		AssetID:     "asset-101",
+		Title:       "Critical high temperature",
+		Description: "Temperature crossed critical threshold",
+		Severity:    "CRITICAL",
+	}
+	if err := repo.CreateIncident(nil, &incident, "system", "created"); err != nil {
+		t.Fatalf("failed to seed incident: %v", err)
+	}
+
+	router := chi.NewRouter()
+	router.Post("/incidents/{id}/escalate", handler.EscalateIncident)
+
+	req := httptest.NewRequest(http.MethodPost, "/incidents/1/escalate", strings.NewReader(`{
+		"reason": "Manual escalation from test",
+		"target": "manager@example.com",
+		"actor": "admin@example.com"
+	}`))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected manual escalation status %d, got %d", http.StatusCreated, rec.Code)
+	}
+	if len(repo.escalations) != 1 || repo.escalations[0].Action != models.EscalationActionIncidentEscalated {
+		t.Fatalf("expected one manual escalation, got %+v", repo.escalations)
+	}
+}
+
 func assertIncidentAction(t *testing.T, router http.Handler, method string, path string, body string, expectedStatus string) models.Incident {
 	t.Helper()
 

@@ -77,6 +77,8 @@ services:
       PORT: ${ALERT_SERVICE_PORT}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       NOTIFICATION_SERVICE_URL: http://notification-service:8090
+      SLA_WORKER_ENABLED: ${SLA_WORKER_ENABLED:-true}
+      SLA_CHECK_INTERVAL_SECONDS: ${SLA_CHECK_INTERVAL_SECONDS:-60}
     ports:
       - "${ALERT_SERVICE_PORT}:5003"
     depends_on:

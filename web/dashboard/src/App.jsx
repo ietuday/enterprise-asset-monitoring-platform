@@ -4,6 +4,7 @@ import "./App.css";
 import IncidentsPage from "./pages/IncidentsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import RulesPage from "./pages/RulesPage";
+import SlaPage from "./pages/SlaPage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
@@ -11,6 +12,7 @@ function pageFromPath(pathname) {
   if (pathname === "/rules") return "rules";
   if (pathname === "/incidents") return "incidents";
   if (pathname === "/notifications") return "notifications";
+  if (pathname === "/sla") return "sla";
   return "dashboard";
 }
 
@@ -273,6 +275,13 @@ function App() {
             Notifications
           </button>
 
+          <button
+            className={activePage === "sla" ? "active" : "secondary"}
+            onClick={() => navigate("sla")}
+          >
+            SLA
+          </button>
+
           <button onClick={refreshActivePage}>Refresh</button>
 
           <button className="secondary" onClick={logout}>
@@ -287,6 +296,8 @@ function App() {
         <IncidentsPage refreshSignal={refreshSignal} />
       ) : activePage === "notifications" ? (
         <NotificationsPage refreshSignal={refreshSignal} />
+      ) : activePage === "sla" ? (
+        <SlaPage refreshSignal={refreshSignal} />
       ) : (
         <DashboardPage
           summary={summary}

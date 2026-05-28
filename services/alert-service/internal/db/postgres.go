@@ -98,3 +98,59 @@ func CreateIncidentTables(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, query)
 	return err
 }
+
+func CreateSLATables(ctx context.Context, pool *pgxpool.Pool) error {
+	query := `
+	CREATE TABLE IF NOT EXISTS sla_policies (
+		id BIGSERIAL PRIMARY KEY,
+		severity VARCHAR(50) NOT NULL UNIQUE,
+		acknowledge_within_minutes INT NOT NULL CHECK (acknowledge_within_minutes > 0),
+		resolve_within_minutes INT NOT NULL CHECK (resolve_within_minutes > 0),
+		escalation_target TEXT NOT NULL,
+		enabled BOOLEAN NOT NULL DEFAULT TRUE,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		CHECK (resolve_within_minutes >= acknowledge_within_minutes)
+	);
+
+	CREATE TABLE IF NOT EXISTS incident_sla_tracking (
+		id BIGSERIAL PRIMARY KEY,
+		incident_id BIGINT NOT NULL UNIQUE REFERENCES incidents(id) ON DELETE CASCADE,
+		severity VARCHAR(50) NOT NULL,
+		status VARCHAR(50) NOT NULL,
+		acknowledge_due_at TIMESTAMP NULL,
+		resolve_due_at TIMESTAMP NULL,
+		acknowledged_at TIMESTAMP NULL,
+		resolved_at TIMESTAMP NULL,
+		escalated_at TIMESTAMP NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
+
+	CREATE TABLE IF NOT EXISTS escalation_history (
+		id BIGSERIAL PRIMARY KEY,
+		incident_id BIGINT NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+		action VARCHAR(100) NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		target TEXT NOT NULL DEFAULT '',
+		actor TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_incident_sla_status
+	ON incident_sla_tracking(status);
+
+	CREATE INDEX IF NOT EXISTS idx_incident_sla_severity
+	ON incident_sla_tracking(severity);
+
+	CREATE INDEX IF NOT EXISTS idx_escalation_history_incident_id
+	ON escalation_history(incident_id);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_escalation_auto_action_unique
+	ON escalation_history(incident_id, action)
+	WHERE action IN ('SLA_ACK_BREACHED', 'SLA_RESOLUTION_BREACHED');
+	`
+
+	_, err := pool.Exec(ctx, query)
+	return err
+}

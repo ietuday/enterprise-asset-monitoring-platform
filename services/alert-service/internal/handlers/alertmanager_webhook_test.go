@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +20,9 @@ type fakeAlertRepository struct {
 	resolvedAlerts []models.Alert
 	incidents      []models.Incident
 	history        []models.IncidentHistory
+	slaPolicies    []models.SLAPolicy
+	slaTracking    []models.IncidentSLATracking
+	escalations    []models.EscalationHistory
 }
 
 func (f *fakeAlertRepository) Create(ctx context.Context, alert *models.Alert) error {
@@ -91,6 +95,14 @@ func (f *fakeAlertRepository) CreateIncident(ctx context.Context, incident *mode
 		Actor:      actor,
 		Comment:    comment,
 		CreatedAt:  now,
+	})
+	f.slaTracking = append(f.slaTracking, models.IncidentSLATracking{
+		ID:         int64(len(f.slaTracking) + 1),
+		IncidentID: incident.ID,
+		Severity:   incident.Severity,
+		Status:     models.SLAStatusNoPolicy,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	})
 	return nil
 }
@@ -195,6 +207,141 @@ func (f *fakeAlertRepository) updateIncident(id string, status string, actor str
 
 func stringID(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func (f *fakeAlertRepository) CreateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error {
+	for _, existing := range f.slaPolicies {
+		if existing.Severity == policy.Severity {
+			return errors.New("conflict")
+		}
+	}
+	policy.ID = int64(len(f.slaPolicies) + 1)
+	policy.CreatedAt = time.Now()
+	policy.UpdatedAt = policy.CreatedAt
+	f.slaPolicies = append(f.slaPolicies, *policy)
+	return nil
+}
+
+func (f *fakeAlertRepository) ListSLAPolicies(ctx context.Context) ([]models.SLAPolicy, error) {
+	return f.slaPolicies, nil
+}
+
+func (f *fakeAlertRepository) GetSLAPolicyByID(ctx context.Context, id string) (*models.SLAPolicy, error) {
+	for i := range f.slaPolicies {
+		if id == stringID(f.slaPolicies[i].ID) {
+			return &f.slaPolicies[i], nil
+		}
+	}
+	return nil, pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) GetEnabledSLAPolicyBySeverity(ctx context.Context, severity string) (*models.SLAPolicy, error) {
+	for i := range f.slaPolicies {
+		if f.slaPolicies[i].Severity == severity && f.slaPolicies[i].Enabled {
+			return &f.slaPolicies[i], nil
+		}
+	}
+	return nil, pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) UpdateSLAPolicy(ctx context.Context, policy *models.SLAPolicy) error {
+	for i := range f.slaPolicies {
+		if f.slaPolicies[i].ID == policy.ID {
+			policy.CreatedAt = f.slaPolicies[i].CreatedAt
+			policy.UpdatedAt = time.Now()
+			f.slaPolicies[i] = *policy
+			return nil
+		}
+	}
+	return pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) DeleteSLAPolicy(ctx context.Context, id string) error {
+	for i := range f.slaPolicies {
+		if id == stringID(f.slaPolicies[i].ID) {
+			f.slaPolicies = append(f.slaPolicies[:i], f.slaPolicies[i+1:]...)
+			return nil
+		}
+	}
+	return pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) GetIncidentSLA(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error) {
+	return f.GetIncidentSLAByIncidentID(ctx, incidentID)
+}
+
+func (f *fakeAlertRepository) GetIncidentSLAByIncidentID(ctx context.Context, incidentID string) (*models.IncidentSLATracking, error) {
+	for i := range f.slaTracking {
+		if incidentID == stringID(f.slaTracking[i].IncidentID) {
+			return &f.slaTracking[i], nil
+		}
+	}
+	return nil, pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) UpdateSLAStatus(ctx context.Context, incidentID int64, status string) error {
+	for i := range f.slaTracking {
+		if f.slaTracking[i].IncidentID == incidentID {
+			f.slaTracking[i].Status = status
+			f.slaTracking[i].UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return pgx.ErrNoRows
+}
+
+func (f *fakeAlertRepository) MarkEscalated(ctx context.Context, incidentID int64) error {
+	for i := range f.slaTracking {
+		if f.slaTracking[i].IncidentID == incidentID {
+			now := time.Now()
+			f.slaTracking[i].Status = models.SLAStatusEscalated
+			f.slaTracking[i].EscalatedAt = &now
+			f.slaTracking[i].UpdatedAt = now
+			return nil
+		}
+	}
+	return nil
+}
+
+func (f *fakeAlertRepository) ListSLABreaches(ctx context.Context, filters models.SLABreachFilters) ([]models.IncidentSLATracking, error) {
+	items := make([]models.IncidentSLATracking, 0)
+	for _, item := range f.slaTracking {
+		if item.Status != models.SLAStatusAckBreached && item.Status != models.SLAStatusResolutionBreached && item.Status != models.SLAStatusEscalated {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (f *fakeAlertRepository) ListSLARecordsDueForCheck(ctx context.Context) ([]models.IncidentSLATracking, error) {
+	return f.slaTracking, nil
+}
+
+func (f *fakeAlertRepository) CreateEscalationHistory(ctx context.Context, escalation *models.EscalationHistory) error {
+	escalation.ID = int64(len(f.escalations) + 1)
+	escalation.CreatedAt = time.Now()
+	f.escalations = append(f.escalations, *escalation)
+	return nil
+}
+
+func (f *fakeAlertRepository) ListEscalationsByIncidentID(ctx context.Context, incidentID string) ([]models.EscalationHistory, error) {
+	items := make([]models.EscalationHistory, 0)
+	for _, item := range f.escalations {
+		if incidentID == stringID(item.IncidentID) {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
+func (f *fakeAlertRepository) ExistsEscalationForIncidentAction(ctx context.Context, incidentID int64, action string) (bool, error) {
+	for _, item := range f.escalations {
+		if item.IncidentID == incidentID && item.Action == action {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func TestAlertmanagerWebhookCreatesAlertOnFiring(t *testing.T) {

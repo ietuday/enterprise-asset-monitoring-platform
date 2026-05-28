@@ -480,6 +480,10 @@ button:disabled {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.sla-summary-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .tabs {
   display: flex;
   gap: 12px;
@@ -496,6 +500,19 @@ button:disabled {
 }
 
 .notification-filters {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.sla-policy-form {
+  grid-template-columns: 0.8fr 1fr 1fr 1.5fr 0.7fr 1fr;
+}
+
+.sla-policy-form .field-error {
+  grid-column: 1 / -1;
+}
+
+.sla-filters,
+.manual-escalation-form {
   grid-template-columns: repeat(3, minmax(180px, 1fr));
 }
 
@@ -523,6 +540,24 @@ button:disabled {
 .status-pending {
   background: #fff0cc;
   color: #8a5a00;
+}
+
+.sla-ack_breached,
+.sla-sla_ack_breached {
+  background: #fff0cc;
+  color: #8a5a00;
+}
+
+.sla-resolution_breached,
+.sla-sla_resolution_breached {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
+.sla-escalated,
+.sla-incident_escalated {
+  background: #e4edff;
+  color: #1f4fa3;
 }
 
 .incident-panel {
@@ -599,7 +634,9 @@ button:disabled {
   }
 
   .notifications-summary-grid,
-  .notification-form {
+  .sla-summary-grid,
+  .notification-form,
+  .sla-policy-form {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -610,6 +647,9 @@ button:disabled {
   .notifications-summary-grid,
   .notification-form,
   .notification-filters,
+  .sla-policy-form,
+  .sla-filters,
+  .manual-escalation-form,
   .filters-row {
     grid-template-columns: 1fr;
   }
