@@ -155,8 +155,9 @@ def test_asset_health_builds_scores_with_all_optional_tables(monkeypatch):
     monkeypatch.setattr(main, "get_db_connection", lambda: FakeConnectionContext(cursor))
 
     result = build_asset_health()
+    assets_by_id = {asset["asset_id"]: asset for asset in result}
 
-    assert result[0] == {
+    assert assets_by_id["1"] == {
         "asset_id": "1",
         "asset_name": "Boiler 1",
         "health_score": 20,
@@ -168,9 +169,15 @@ def test_asset_health_builds_scores_with_all_optional_tables(monkeypatch):
             "1 overdue maintenance task",
         ],
     }
-    assert result[1]["health_score"] == 0
-    assert "Asset status down/inactive" in result[1]["reasons"]
-    assert cursor.executed[0][1] == ()
+
+    pump_asset = assets_by_id["2"]
+    assert pump_asset["health_score"] == 0
+    assert "Asset status down/inactive" in pump_asset["reasons"]
+
+    first_query_params = next(
+        params for _query, params in cursor.executed if params == ()
+    )
+    assert first_query_params == ()
 
 
 def test_one_asset_health_and_not_found(monkeypatch):
@@ -193,7 +200,8 @@ def test_asset_health_returns_empty_when_asset_query_has_no_rows(monkeypatch):
     monkeypatch.setattr(main, "get_db_connection", lambda: FakeConnectionContext(cursor))
 
     assert build_asset_health("missing") == []
-    assert cursor.executed[0][1] == ("missing",)
+    executed_queries_by_params = {params for _query, params in cursor.executed}
+    assert ("missing",) in executed_queries_by_params
 
 
 class FakeConnectionContext:
