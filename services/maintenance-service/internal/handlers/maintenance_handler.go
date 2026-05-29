@@ -14,6 +14,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	errInvalidStatus   = "invalid status"
+	errInvalidPriority = "invalid priority"
+)
+
 type MaintenanceHandler struct {
 	service *service.MaintenanceService
 }
@@ -39,11 +44,11 @@ func (h *MaintenanceHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if filters.Status != "" && !models.IsValidStatus(filters.Status) {
-		writeError(w, http.StatusBadRequest, "invalid status")
+		writeError(w, http.StatusBadRequest, errInvalidStatus)
 		return
 	}
 	if filters.Priority != "" && !models.IsValidPriority(filters.Priority) {
-		writeError(w, http.StatusBadRequest, "invalid priority")
+		writeError(w, http.StatusBadRequest, errInvalidPriority)
 		return
 	}
 
@@ -121,7 +126,7 @@ func (h *MaintenanceHandler) ChangeStatus(w http.ResponseWriter, r *http.Request
 	}
 	req.Status = strings.TrimSpace(req.Status)
 	if !models.IsValidStatus(req.Status) {
-		writeError(w, http.StatusBadRequest, "invalid status")
+		writeError(w, http.StatusBadRequest, errInvalidStatus)
 		return
 	}
 
@@ -216,7 +221,7 @@ func validateCreate(req models.TaskCreateRequest) string {
 		req.Priority = models.PriorityMedium
 	}
 	if !models.IsValidPriority(req.Priority) {
-		return "invalid priority"
+		return errInvalidPriority
 	}
 	return ""
 }
@@ -229,10 +234,10 @@ func validateUpdate(req models.TaskUpdateRequest) string {
 		return "maintenance_type cannot be empty"
 	}
 	if req.Priority != nil && !models.IsValidPriority(*req.Priority) {
-		return "invalid priority"
+		return errInvalidPriority
 	}
 	if req.Status != nil && !models.IsValidStatus(*req.Status) {
-		return "invalid status"
+		return errInvalidStatus
 	}
 	if req.Status != nil && *req.Status == models.StatusCompleted {
 		return "use the complete endpoint to complete maintenance tasks"
