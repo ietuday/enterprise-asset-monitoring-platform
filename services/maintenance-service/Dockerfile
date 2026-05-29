@@ -5,7 +5,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+COPY main.go ./
+COPY internal ./internal
 
 RUN go build -o maintenance-service .
 
