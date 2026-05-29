@@ -27,4 +27,7 @@ test("dashboard navigation reaches the main product pages", async ({ page }) => 
 
   await page.getByRole("button", { name: "SLA" }).click();
   await expect(page.locator("h1", { hasText: /^SLA$/i })).toBeVisible();
+
+  await page.getByRole("button", { name: "Maintenance" }).click();
+  await expect(page.locator("h1", { hasText: /^Maintenance$/i })).toBeVisible();
 });

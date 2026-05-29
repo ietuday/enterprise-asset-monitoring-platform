@@ -6,15 +6,24 @@
 # Node
 node_modules
 dist
+tests/e2e/node_modules/
+tests/e2e/ui/playwright-report/
+tests/e2e/ui/test-results/
+web/dashboard/dist/
+web/dashboard/coverage/
+services/api-gateway/coverage/
 npm-debug.log*
 
 # Go
 bin/
 *.test
 coverage.out
+services/maintenance-service/coverage.out
+services/report-service/coverage.xml
 
 # Python
 .venv
+.coverage
 __pycache__/
 *.pyc
 

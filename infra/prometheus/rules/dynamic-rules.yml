@@ -122,3 +122,33 @@ groups:
           description: "Dynamic rule High Memory Usage triggered for asset {{ $labels.asset_id }}"
           asset_id: "{{ $labels.asset_id }}"
           alert_name: "High Memory Usage"
+      - alert: HighTemperature
+        expr: asset_temperature_celsius > 80.00
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High Temperature"
+          description: "Dynamic rule High Temperature triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Temperature"
+      - alert: HighCPUUsage
+        expr: asset_cpu_usage_percent > 85.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "High CPU Usage"
+          description: "Dynamic rule High CPU Usage triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High CPU Usage"
+      - alert: HighMemoryUsage
+        expr: asset_memory_usage_percent > 90.00
+        for: 5s
+        labels:
+          severity: high
+        annotations:
+          summary: "High Memory Usage"
+          description: "Dynamic rule High Memory Usage triggered for asset {{ $labels.asset_id }}"
+          asset_id: "{{ $labels.asset_id }}"
+          alert_name: "High Memory Usage"

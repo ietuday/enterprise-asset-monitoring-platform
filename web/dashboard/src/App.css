@@ -484,6 +484,10 @@ button:disabled {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.maintenance-summary-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .tabs {
   display: flex;
   gap: 12px;
@@ -512,8 +516,17 @@ button:disabled {
 }
 
 .sla-filters,
-.manual-escalation-form {
+.manual-escalation-form,
+.maintenance-filters {
   grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.maintenance-form {
+  grid-template-columns: 0.8fr 1.3fr 0.9fr 0.7fr 1fr 1fr 1.1fr 1.4fr 0.8fr;
+}
+
+.maintenance-form textarea {
+  min-height: 46px;
 }
 
 .wide-cell {
@@ -538,6 +551,39 @@ button:disabled {
 }
 
 .status-pending {
+  background: #fff0cc;
+  color: #8a5a00;
+}
+
+.maintenance-status-scheduled,
+.health-healthy,
+.priority-low {
+  background: #ddf7e8;
+  color: #126b36;
+}
+
+.maintenance-status-in_progress,
+.health-warning,
+.priority-medium {
+  background: #e4edff;
+  color: #1f4fa3;
+}
+
+.maintenance-status-overdue,
+.maintenance-status-cancelled,
+.health-critical,
+.priority-critical {
+  background: #ffe1e1;
+  color: #a40000;
+}
+
+.maintenance-status-completed {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.health-degraded,
+.priority-high {
   background: #fff0cc;
   color: #8a5a00;
 }
@@ -639,6 +685,10 @@ button:disabled {
   .sla-policy-form {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .maintenance-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 700px) {
@@ -647,10 +697,12 @@ button:disabled {
   .notifications-summary-grid,
   .notification-form,
   .notification-filters,
-  .sla-policy-form,
-  .sla-filters,
-  .manual-escalation-form,
-  .filters-row {
+    .sla-policy-form,
+    .sla-filters,
+    .manual-escalation-form,
+    .maintenance-form,
+    .maintenance-filters,
+    .filters-row {
     grid-template-columns: 1fr;
   }
 }

@@ -40,6 +40,10 @@ test("full platform flow through dashboard UI", async ({ page }) => {
   await maybeCreateSLAPolicy(page);
   await expect(page.getByText(/SLA Policies/i)).toBeVisible();
 
+  await gotoNav(page, "Maintenance");
+  await expect(page.getByRole("heading", { name: /^Maintenance$/i })).toBeVisible();
+  await expect(page.getByText(/Maintenance Tasks/i)).toBeVisible();
+
   await gotoNav(page, "Dashboard");
   await expect(page.getByRole("heading", { name: /Enterprise Asset Monitoring/i })).toBeVisible();
 

@@ -38,6 +38,9 @@ const RULE_SERVICE_URL =
 const NOTIFICATION_SERVICE_URL =
   process.env.NOTIFICATION_SERVICE_URL || "http://notification-service:8090";
 
+const MAINTENANCE_SERVICE_URL =
+  process.env.MAINTENANCE_SERVICE_URL || "http://maintenance-service:8087";
+
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 const apiRateLimiter = rateLimit({
@@ -127,6 +130,14 @@ function authorizeRoles(...allowedRoles) {
 
     next();
   };
+}
+
+function authorizeMaintenanceRequest(req, res, next) {
+  if (req.method === "GET") {
+    return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+  }
+
+  return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
 }
 
 /**
@@ -318,6 +329,25 @@ app.use(
 );
 
 /**
+ * Protected Maintenance Routes
+ * - GET /api/maintenance -> ADMIN, OPERATOR, VIEWER
+ * - POST/PUT/PATCH /api/maintenance -> ADMIN, OPERATOR
+ */
+app.use(
+  "/api/maintenance",
+  apiRateLimiter,
+  authenticate,
+  authorizeMaintenanceRequest,
+  createProxyMiddleware({
+    target: MAINTENANCE_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (path) => {
+      return path === "/" ? "/maintenance" : `/maintenance${path}`;
+    },
+  })
+);
+
+/**
  * Protected Rule Routes 
  * - GET /api/rules -> ADMIN, OPERATOR, VIEWER
  * - POST/PUT/DELETE /api/rules -> ADMIN only
@@ -416,6 +446,7 @@ async function startServer() {
       console.log(`report-service: ${REPORT_SERVICE_URL}`);
       console.log(`rule-service: ${RULE_SERVICE_URL}`);
       console.log(`notification-service: ${NOTIFICATION_SERVICE_URL}`);
+      console.log(`maintenance-service: ${MAINTENANCE_SERVICE_URL}`);
     });
   } catch (err) {
     console.error("failed to start api-gateway:", err);
@@ -423,4 +454,14 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  authenticate,
+  authorizeRoles,
+  authorizeMaintenanceRequest,
+  startServer,
+};

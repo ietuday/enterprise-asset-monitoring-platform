@@ -56,6 +56,7 @@ jobs:
           - telemetry-service
           - alert-service
           - rule-service
+          - maintenance-service
 
     steps:
       - name: Checkout code
@@ -88,7 +89,12 @@ jobs:
 
       - name: Build
         working-directory: services/${{ matrix.service }}
-        run: go build -o /tmp/${{ matrix.service }} ./cmd
+        run: |
+          if [[ "${{ matrix.service }}" == "maintenance-service" ]]; then
+            go build -o /tmp/${{ matrix.service }} .
+          else
+            go build -o /tmp/${{ matrix.service }} ./cmd
+          fi
 
   node-services:
     name: Node Services
@@ -114,7 +120,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: services/${{ matrix.service }}
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run lint if available
         working-directory: services/${{ matrix.service }}
@@ -143,9 +149,9 @@ jobs:
         working-directory: services/report-service
         run: pip install -r requirements.txt
 
-      - name: Import check
+      - name: Run tests with coverage
         working-directory: services/report-service
-        run: python -m py_compile main.py
+        run: python -m pytest --cov=. --cov-report=xml
 
   dashboard:
     name: React Dashboard
@@ -164,7 +170,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: web/dashboard
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Run dashboard tests with coverage
+        working-directory: web/dashboard
+        run: npm run test -- --coverage
 
       - name: Build dashboard
         working-directory: web/dashboard
