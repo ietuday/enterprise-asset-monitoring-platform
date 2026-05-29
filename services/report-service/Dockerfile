@@ -6,7 +6,7 @@ RUN apk add --no-cache gcc musl-dev postgresql-dev
 
 COPY requirements.lock .
 
-RUN pip install --no-cache-dir --only-binary=:all: -r requirements.lock
+RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements.lock
 
 COPY . .
 
