@@ -1,17 +1,3 @@
-# v1.6.0 - Preventive Maintenance and Asset Health
-
-## Added
-
-- New maintenance-service for preventive maintenance tasks.
-- Maintenance task lifecycle: scheduled, in progress, completed, overdue, cancelled.
-- Maintenance history tracking.
-- API Gateway routing and RBAC for maintenance APIs.
-- Maintenance dashboard page.
-- Asset Health Score endpoint in report-service.
-- E2E smoke/UI coverage for maintenance workflow.
-
----
-
 # v1.1.0 - CI, Security, and Repository Governance
 
 ## Highlights
