@@ -47,6 +47,13 @@ export async function cancelMaintenanceTask(id, payload) {
   return response.data;
 }
 
+export async function listMaintenanceHistory(taskId) {
+  const response = await axios.get(`${API_BASE_URL}/api/maintenance/history/${taskId}`, {
+    headers: authHeaders(),
+  });
+  return response.data;
+}
+
 export async function listAssetHealth() {
   const response = await axios.get(`${API_BASE_URL}/api/reports/asset-health`, {
     headers: authHeaders(),

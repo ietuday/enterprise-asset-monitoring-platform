@@ -132,6 +132,14 @@ function authorizeRoles(...allowedRoles) {
   };
 }
 
+function authorizeMaintenanceRequest(req, res, next) {
+  if (req.method === "GET") {
+    return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+  }
+
+  return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
+}
+
 /**
  * Public Auth Routes
  *
@@ -329,13 +337,7 @@ app.use(
   "/api/maintenance",
   apiRateLimiter,
   authenticate,
-  (req, res, next) => {
-    if (req.method === "GET") {
-      return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
-    }
-
-    return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
-  },
+  authorizeMaintenanceRequest,
   createProxyMiddleware({
     target: MAINTENANCE_SERVICE_URL,
     changeOrigin: true,
@@ -452,4 +454,14 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  authenticate,
+  authorizeRoles,
+  authorizeMaintenanceRequest,
+  startServer,
+};

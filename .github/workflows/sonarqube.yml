@@ -55,40 +55,52 @@ jobs:
           COVERAGE_FILES=()
 
           for service in services/*; do
-            if [ -f "$service/go.mod" ]; then
+            if [[ -f "$service/go.mod" ]]; then
+              service_name=$(basename "$service")
               echo "Running Go tests in $service"
               (
                 cd "$service"
-                go test ./... -coverprofile="../../coverage/$(basename "$service").out"
+                go test ./... -coverprofile="coverage.out"
               )
-              COVERAGE_FILES+=("coverage/$(basename "$service").out")
+              cp "$service/coverage.out" "coverage/${service_name}.out"
+              COVERAGE_FILES+=("coverage/${service_name}.out")
             fi
           done
 
           echo "mode: set" > coverage/go-coverage.out
           for file in "${COVERAGE_FILES[@]}"; do
-            if [ -f "$file" ]; then
+            if [[ -f "$file" ]]; then
               tail -n +2 "$file" >> coverage/go-coverage.out
             fi
           done
 
       - name: Install dashboard dependencies
         working-directory: web/dashboard
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run dashboard tests with coverage
         working-directory: web/dashboard
-        shell: bash
-        run: |
-          if npm run --json | grep -q '"test"'; then
-            npm test -- --coverage --watch=false
-          else
-            echo "No dashboard test script found"
-          fi
+        run: npm run test -- --coverage
+
+      - name: Install API Gateway dependencies
+        working-directory: services/api-gateway
+        run: npm ci --ignore-scripts
+
+      - name: Run API Gateway tests with coverage
+        working-directory: services/api-gateway
+        run: npm test -- --coverage
+
+      - name: Install report-service dependencies
+        working-directory: services/report-service
+        run: pip install -r requirements.txt
+
+      - name: Run report-service tests with coverage
+        working-directory: services/report-service
+        run: python -m pytest --cov=. --cov-report=xml
 
       - name: Collect dashboard coverage
         run: |
-          if [ -f web/dashboard/coverage/lcov.info ]; then
+          if [[ -f web/dashboard/coverage/lcov.info ]]; then
             cp web/dashboard/coverage/lcov.info coverage/lcov.info
           else
             touch coverage/lcov.info

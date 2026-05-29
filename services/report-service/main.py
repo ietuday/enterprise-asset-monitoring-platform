@@ -122,6 +122,57 @@ def health_status(score):
     return "critical"
 
 
+def clamp_score(score):
+    return max(0, min(100, score))
+
+
+def build_health_reasons(
+    asset_status="",
+    critical_alerts=0,
+    warning_alerts=0,
+    open_incidents=0,
+    sla_breaches=0,
+    overdue_maintenance=0,
+):
+    reasons = []
+
+    if str(asset_status or "").upper() in ("DOWN", "INACTIVE"):
+        reasons.append("Asset status down/inactive")
+    if critical_alerts:
+        reasons.append(f"{critical_alerts} active critical alert")
+    if warning_alerts:
+        reasons.append(f"{warning_alerts} active warning alert")
+    if open_incidents:
+        reasons.append(f"{open_incidents} open incident")
+    if sla_breaches:
+        reasons.append(f"{sla_breaches} SLA breach")
+    if overdue_maintenance:
+        reasons.append(f"{overdue_maintenance} overdue maintenance task")
+
+    return reasons
+
+
+def calculate_health_score(
+    asset_status="",
+    critical_alerts=0,
+    warning_alerts=0,
+    open_incidents=0,
+    sla_breaches=0,
+    overdue_maintenance=0,
+):
+    score = 100
+
+    if str(asset_status or "").upper() in ("DOWN", "INACTIVE"):
+        score -= 50
+    score -= critical_alerts * 25
+    score -= warning_alerts * 10
+    score -= open_incidents * 20
+    score -= sla_breaches * 20
+    score -= overdue_maintenance * 15
+
+    return clamp_score(score)
+
+
 @app.get("/reports/asset-health")
 def get_asset_health():
     return build_asset_health()
@@ -223,39 +274,28 @@ def build_asset_health(asset_id=None):
                 current_asset_id = str(asset[0])
                 asset_name = asset[1]
                 asset_status = str(asset[2] or "")
-                score = 100
-                reasons = []
-
-                if asset_status.upper() in ("DOWN", "INACTIVE"):
-                    score -= 50
-                    reasons.append("Asset status down/inactive")
 
                 critical_count = critical_alerts.get(current_asset_id, 0)
-                if critical_count:
-                    score -= critical_count * 25
-                    reasons.append(f"{critical_count} active critical alert")
-
                 warning_count = warning_alerts.get(current_asset_id, 0)
-                if warning_count:
-                    score -= warning_count * 10
-                    reasons.append(f"{warning_count} active warning alert")
-
                 incident_count = open_incidents.get(current_asset_id, 0)
-                if incident_count:
-                    score -= incident_count * 20
-                    reasons.append(f"{incident_count} open incident")
-
                 breach_count = sla_breaches.get(current_asset_id, 0)
-                if breach_count:
-                    score -= breach_count * 20
-                    reasons.append(f"{breach_count} SLA breach")
-
                 maintenance_count = overdue_maintenance.get(current_asset_id, 0)
-                if maintenance_count:
-                    score -= maintenance_count * 15
-                    reasons.append(f"{maintenance_count} overdue maintenance task")
-
-                score = max(0, min(100, score))
+                score = calculate_health_score(
+                    asset_status=asset_status,
+                    critical_alerts=critical_count,
+                    warning_alerts=warning_count,
+                    open_incidents=incident_count,
+                    sla_breaches=breach_count,
+                    overdue_maintenance=maintenance_count,
+                )
+                reasons = build_health_reasons(
+                    asset_status=asset_status,
+                    critical_alerts=critical_count,
+                    warning_alerts=warning_count,
+                    open_incidents=incident_count,
+                    sla_breaches=breach_count,
+                    overdue_maintenance=maintenance_count,
+                )
                 results.append(
                     {
                         "asset_id": current_asset_id,

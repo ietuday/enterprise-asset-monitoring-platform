@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -19,11 +20,22 @@ const (
 	errInvalidPriority = "invalid priority"
 )
 
-type MaintenanceHandler struct {
-	service *service.MaintenanceService
+type maintenanceService interface {
+	ListTasks(ctx context.Context, filters models.TaskFilters) ([]models.MaintenanceTask, error)
+	CreateTask(ctx context.Context, req models.TaskCreateRequest) (*models.MaintenanceTask, error)
+	GetTask(ctx context.Context, id string) (*models.MaintenanceTask, error)
+	UpdateTask(ctx context.Context, id string, req models.TaskUpdateRequest, actor string) (*models.MaintenanceTask, error)
+	ChangeStatus(ctx context.Context, id string, req models.StatusChangeRequest) (*models.MaintenanceTask, error)
+	CompleteTask(ctx context.Context, id string, req models.CompletionRequest) (*models.MaintenanceTask, error)
+	CancelTask(ctx context.Context, id string, req models.CompletionRequest) (*models.MaintenanceTask, error)
+	ListHistory(ctx context.Context, id string) ([]models.MaintenanceHistory, error)
 }
 
-func NewMaintenanceHandler(service *service.MaintenanceService) *MaintenanceHandler {
+type MaintenanceHandler struct {
+	service maintenanceService
+}
+
+func NewMaintenanceHandler(service maintenanceService) *MaintenanceHandler {
 	return &MaintenanceHandler{service: service}
 }
 

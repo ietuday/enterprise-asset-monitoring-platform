@@ -23,9 +23,7 @@ func NewMaintenanceService(db *pgxpool.Pool) *MaintenanceService {
 }
 
 func (s *MaintenanceService) CreateTask(ctx context.Context, req models.TaskCreateRequest) (*models.MaintenanceTask, error) {
-	if req.Priority == "" {
-		req.Priority = models.PriorityMedium
-	}
+	req = normalizeCreateRequest(req)
 
 	task := &models.MaintenanceTask{}
 	tx, err := s.db.Begin(ctx)
@@ -65,41 +63,7 @@ func (s *MaintenanceService) CreateTask(ctx context.Context, req models.TaskCrea
 }
 
 func (s *MaintenanceService) ListTasks(ctx context.Context, filters models.TaskFilters) ([]models.MaintenanceTask, error) {
-	conditions := []string{"1 = 1"}
-	args := []any{}
-
-	if filters.Status != "" {
-		if filters.Status == models.StatusOverdue {
-			conditions = append(conditions, "due_date < NOW() AND status NOT IN ('completed', 'cancelled')")
-		} else {
-			args = append(args, filters.Status)
-			conditions = append(conditions, "status = $"+itoa(len(args)))
-		}
-	}
-	if filters.AssetID != "" {
-		args = append(args, filters.AssetID)
-		conditions = append(conditions, "asset_id = $"+itoa(len(args)))
-	}
-	if filters.Priority != "" {
-		args = append(args, filters.Priority)
-		conditions = append(conditions, "priority = $"+itoa(len(args)))
-	}
-	if filters.Overdue {
-		conditions = append(conditions, "due_date < NOW() AND status NOT IN ('completed', 'cancelled')")
-	}
-
-	query := `
-		SELECT id, asset_id, title, description, maintenance_type, priority,
-			CASE
-				WHEN due_date < NOW() AND status NOT IN ('completed', 'cancelled') THEN 'overdue'
-				ELSE status
-			END AS status,
-			scheduled_date, due_date, completed_at, assigned_to, created_by, created_at, updated_at
-		FROM maintenance_tasks
-		WHERE ` + strings.Join(conditions, " AND ") + `
-		ORDER BY due_date ASC, created_at DESC;
-	`
-
+	query, args := buildListTasksQuery(filters)
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -123,43 +87,10 @@ func (s *MaintenanceService) UpdateTask(ctx context.Context, id string, req mode
 	if err != nil {
 		return nil, err
 	}
-	if current.Status == models.StatusCompleted {
-		return nil, ErrCompletedTaskLocked
-	}
 
-	next := *current
-	if req.AssetID != nil {
-		next.AssetID = *req.AssetID
-	}
-	if req.Title != nil {
-		next.Title = *req.Title
-	}
-	if req.Description != nil {
-		next.Description = *req.Description
-	}
-	if req.MaintenanceType != nil {
-		next.MaintenanceType = *req.MaintenanceType
-	}
-	if req.Priority != nil {
-		next.Priority = *req.Priority
-	}
-	if req.Status != nil {
-		next.Status = *req.Status
-	}
-	if req.ScheduledDate != nil {
-		next.ScheduledDate = *req.ScheduledDate
-	}
-	if req.DueDate != nil {
-		next.DueDate = *req.DueDate
-	}
-	if req.AssignedTo != nil {
-		next.AssignedTo = *req.AssignedTo
-	}
-	if req.CreatedBy != nil {
-		next.CreatedBy = *req.CreatedBy
-	}
-	if next.DueDate.Before(next.ScheduledDate) {
-		return nil, ErrInvalidTaskDates
+	next, err := applyTaskUpdate(*current, req)
+	if err != nil {
+		return nil, err
 	}
 
 	task := &models.MaintenanceTask{}
@@ -199,6 +130,95 @@ func (s *MaintenanceService) UpdateTask(ctx context.Context, id string, req mode
 	}
 
 	return task, tx.Commit(ctx)
+}
+
+func buildListTasksQuery(filters models.TaskFilters) (string, []any) {
+	conditions := []string{"1 = 1"}
+	args := []any{}
+
+	if filters.Status != "" {
+		if filters.Status == models.StatusOverdue {
+			conditions = append(conditions, "due_date < NOW() AND status NOT IN ('completed', 'cancelled')")
+		} else {
+			args = append(args, filters.Status)
+			conditions = append(conditions, "status = $"+itoa(len(args)))
+		}
+	}
+	if filters.AssetID != "" {
+		args = append(args, filters.AssetID)
+		conditions = append(conditions, "asset_id = $"+itoa(len(args)))
+	}
+	if filters.Priority != "" {
+		args = append(args, filters.Priority)
+		conditions = append(conditions, "priority = $"+itoa(len(args)))
+	}
+	if filters.Overdue {
+		conditions = append(conditions, "due_date < NOW() AND status NOT IN ('completed', 'cancelled')")
+	}
+
+	query := `
+		SELECT id, asset_id, title, description, maintenance_type, priority,
+			CASE
+				WHEN due_date < NOW() AND status NOT IN ('completed', 'cancelled') THEN 'overdue'
+				ELSE status
+			END AS status,
+			scheduled_date, due_date, completed_at, assigned_to, created_by, created_at, updated_at
+		FROM maintenance_tasks
+		WHERE ` + strings.Join(conditions, " AND ") + `
+		ORDER BY due_date ASC, created_at DESC;
+	`
+
+	return query, args
+}
+
+func normalizeCreateRequest(req models.TaskCreateRequest) models.TaskCreateRequest {
+	if req.Priority == "" {
+		req.Priority = models.PriorityMedium
+	}
+	return req
+}
+
+func applyTaskUpdate(current models.MaintenanceTask, req models.TaskUpdateRequest) (models.MaintenanceTask, error) {
+	if current.Status == models.StatusCompleted {
+		return models.MaintenanceTask{}, ErrCompletedTaskLocked
+	}
+
+	next := current
+	if req.AssetID != nil {
+		next.AssetID = *req.AssetID
+	}
+	if req.Title != nil {
+		next.Title = *req.Title
+	}
+	if req.Description != nil {
+		next.Description = *req.Description
+	}
+	if req.MaintenanceType != nil {
+		next.MaintenanceType = *req.MaintenanceType
+	}
+	if req.Priority != nil {
+		next.Priority = *req.Priority
+	}
+	if req.Status != nil {
+		next.Status = *req.Status
+	}
+	if req.ScheduledDate != nil {
+		next.ScheduledDate = *req.ScheduledDate
+	}
+	if req.DueDate != nil {
+		next.DueDate = *req.DueDate
+	}
+	if req.AssignedTo != nil {
+		next.AssignedTo = *req.AssignedTo
+	}
+	if req.CreatedBy != nil {
+		next.CreatedBy = *req.CreatedBy
+	}
+	if next.DueDate.Before(next.ScheduledDate) {
+		return models.MaintenanceTask{}, ErrInvalidTaskDates
+	}
+
+	return next, nil
 }
 
 func (s *MaintenanceService) ChangeStatus(ctx context.Context, id string, req models.StatusChangeRequest) (*models.MaintenanceTask, error) {

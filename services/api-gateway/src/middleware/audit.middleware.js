@@ -89,4 +89,5 @@ function auditLog(req, res, next) {
 
 module.exports = {
   auditLog,
+  resolveAction,
 };
