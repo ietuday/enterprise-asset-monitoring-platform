@@ -5,7 +5,7 @@
   "scripts": {
     "test": "npm run test:api:smoke && npm run test:ui",
     "test:api": "npm run test:api:smoke",
-    "test:api:smoke": "vitest run api/auth.e2e.test.js api/notification-flow.e2e.test.js",
+    "test:api:smoke": "vitest run api/auth.e2e.test.js api/notification-flow.e2e.test.js api/maintenance-smoke.e2e.test.js",
     "test:api:deep": "vitest run api/experimental/monitoring-flow.e2e.test.js api/experimental/incident-flow.e2e.test.js api/experimental/sla-flow.e2e.test.js",
     "test:api:watch": "vitest api",
     "test:ui": "playwright test --config=ui/playwright.config.js",

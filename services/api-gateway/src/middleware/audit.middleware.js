@@ -24,6 +24,15 @@ function resolveAction(method, path) {
     return "READ_REPORTS";
   }
 
+  if (path.startsWith("/api/maintenance")) {
+    if (method === "POST" && path.includes("/complete")) return "MAINTENANCE_TASK_COMPLETED";
+    if (method === "POST" && path.includes("/cancel")) return "MAINTENANCE_TASK_CANCELLED";
+    if (method === "POST") return "MAINTENANCE_TASK_CREATED";
+    if (method === "PUT") return "MAINTENANCE_TASK_UPDATED";
+    if (method === "PATCH" && path.includes("/status")) return "MAINTENANCE_TASK_STATUS_CHANGED";
+    if (method === "GET") return "MAINTENANCE_TASK_VIEWED";
+  }
+
   if (path.startsWith("/api/auth/login")) {
     return "LOGIN";
   }

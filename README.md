@@ -23,6 +23,8 @@ It supports:
 - Alertmanager webhook delivery
 - Notification channel management and alert delivery
 - SLA tracking and escalation workflows
+- Preventive maintenance scheduling and history
+- Asset Health Score reporting
 - Alert lifecycle management
 - Alert deduplication
 - Auto alert resolution
@@ -52,6 +54,7 @@ Node.js API Gateway
       |-- Rule Service       Go
       |-- Report Service     Python FastAPI
       |-- Notification Svc   Go
+      |-- Maintenance Svc    Go
       |
       v
 PostgreSQL
@@ -71,6 +74,20 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 
 ---
 
+## v1.6.0 - Preventive Maintenance and Asset Health
+
+This release makes the platform more proactive by adding scheduled maintenance workflows before asset failure.
+
+- New maintenance-service for preventive maintenance tasks
+- Maintenance lifecycle: scheduled, in progress, completed, overdue, cancelled
+- Maintenance history tracking for create, update, status, complete, and cancel actions
+- API Gateway routing, RBAC, and audit action mapping for maintenance APIs
+- React Maintenance dashboard page
+- Asset Health Score endpoint in report-service
+- API smoke and Playwright UI coverage for the maintenance workflow
+
+---
+
 ## 3. Services
 
 | Service | Tech | Port | Responsibility |
@@ -84,6 +101,7 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 | Rule Service | Go | 5004 | Dynamic rule CRUD and Prometheus rule generation |
 | Report Service | Python FastAPI | 8000 | Reports and summary APIs |
 | Notification Service | Go | 8090 | Email/webhook channels, delivery history, retries |
+| Maintenance Service | Go | 8087 | Preventive maintenance tasks and lifecycle history |
 | Prometheus | Prometheus | 9090 | Metrics scraping and alert rule evaluation |
 | Alertmanager | Alertmanager | 9093 | Alert routing and webhook delivery |
 | Grafana | Grafana | 3001 | Metrics visualization |
@@ -111,8 +129,9 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 14. Alert Service sends notification-worthy events to Notification Service.
 15. Alert Service tracks SLA deadlines and records escalation history.
 16. Notification Service delivers email/webhook notifications and records delivery history.
-17. Report Service returns dashboard summaries.
-18. Grafana visualizes runtime and business metrics.
+17. Maintenance Service schedules preventive work and records task history.
+18. Report Service returns dashboard summaries and Asset Health Scores.
+19. Grafana visualizes runtime and business metrics.
 ```
 
 ---
@@ -122,8 +141,8 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 | Role | Permissions |
 |---|---|
 | ADMIN | Full access |
-| OPERATOR | View data, submit telemetry, acknowledge/resolve alerts |
-| VIEWER | Read-only access to assets, alerts, telemetry, reports, and rules |
+| OPERATOR | View data, submit telemetry, acknowledge/resolve alerts, manage maintenance tasks |
+| VIEWER | Read-only access to assets, alerts, telemetry, reports, rules, and maintenance history |
 
 Examples:
 
@@ -146,6 +165,7 @@ ADMIN can create assets and manage rules.
 | Telemetry Service | http://localhost:5002 |
 | Alert Service | http://localhost:5003 |
 | Notification Service | http://localhost:8090 |
+| Maintenance Service | http://localhost:8087 |
 | Rule Service | http://localhost:5004 |
 | Report Service | http://localhost:8000 |
 | Prometheus | http://localhost:9090 |
@@ -238,6 +258,7 @@ ASSET_SERVICE_PORT=5001
 TELEMETRY_SERVICE_PORT=5002
 ALERT_SERVICE_PORT=5003
 NOTIFICATION_SERVICE_PORT=8090
+MAINTENANCE_SERVICE_PORT=8087
 RULE_SERVICE_PORT=5004
 REPORT_SERVICE_PORT=8000
 DASHBOARD_PORT=3000
@@ -249,6 +270,7 @@ ASSET_SERVICE_URL=http://asset-service:5001
 TELEMETRY_SERVICE_URL=http://telemetry-service:5002
 ALERT_SERVICE_URL=http://alert-service:5003
 NOTIFICATION_SERVICE_URL=http://notification-service:8090
+MAINTENANCE_SERVICE_URL=http://maintenance-service:8087
 RULE_SERVICE_URL=http://rule-service:5004
 REPORT_SERVICE_URL=http://report-service:8000
 
@@ -434,6 +456,50 @@ Example response:
   "criticalAlerts": 8,
   "highAlerts": 2
 }
+```
+
+### Maintenance APIs
+
+Maintenance APIs are routed through the API Gateway at `/api/maintenance`.
+
+```bash
+curl -X POST http://localhost:4000/api/maintenance/tasks \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "asset_id": "motor-101",
+    "title": "Quarterly inspection",
+    "maintenance_type": "inspection",
+    "priority": "medium",
+    "scheduled_date": "2026-06-01T09:00:00Z",
+    "due_date": "2026-06-08T09:00:00Z",
+    "assigned_to": "operator@example.com",
+    "created_by": "admin@example.com"
+  }'
+```
+
+Key routes:
+
+```text
+GET    /api/maintenance/tasks
+POST   /api/maintenance/tasks
+GET    /api/maintenance/tasks/{id}
+PUT    /api/maintenance/tasks/{id}
+PATCH  /api/maintenance/tasks/{id}/status
+POST   /api/maintenance/tasks/{id}/complete
+POST   /api/maintenance/tasks/{id}/cancel
+GET    /api/maintenance/assets/{assetId}/tasks
+GET    /api/maintenance/overdue
+GET    /api/maintenance/history/{taskId}
+```
+
+### Asset Health Score
+
+Report Service exposes Asset Health Score using assets, active alerts, open incidents, SLA breaches, and overdue maintenance:
+
+```bash
+curl http://localhost:4000/api/reports/asset-health \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

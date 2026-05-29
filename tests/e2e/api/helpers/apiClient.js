@@ -192,6 +192,26 @@ class ApiClient {
   listIncidentEscalations(id) {
     return this.get(`/api/incidents/${id}/escalations`);
   }
+
+  createMaintenanceTask(task) {
+    return this.post("/api/maintenance/tasks", task);
+  }
+
+  listMaintenanceTasks(filters = {}) {
+    return this.get("/api/maintenance/tasks", filters);
+  }
+
+  completeMaintenanceTask(id, body) {
+    return this.post(`/api/maintenance/tasks/${id}/complete`, body);
+  }
+
+  listMaintenanceHistory(id) {
+    return this.get(`/api/maintenance/history/${id}`);
+  }
+
+  listAssetHealth() {
+    return this.get("/api/reports/asset-health");
+  }
 }
 
 module.exports = {

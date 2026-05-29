@@ -5,6 +5,7 @@ import IncidentsPage from "./pages/IncidentsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import RulesPage from "./pages/RulesPage";
 import SlaPage from "./pages/SlaPage";
+import MaintenancePage from "./pages/Maintenance";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
@@ -13,6 +14,7 @@ function pageFromPath(pathname) {
   if (pathname === "/incidents") return "incidents";
   if (pathname === "/notifications") return "notifications";
   if (pathname === "/sla") return "sla";
+  if (pathname === "/maintenance") return "maintenance";
   return "dashboard";
 }
 
@@ -32,6 +34,7 @@ function App() {
   const [summary, setSummary] = useState(null);
   const [assets, setAssets] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [assetHealth, setAssetHealth] = useState([]);
   const [error, setError] = useState("");
 
   const [telemetryForm, setTelemetryForm] = useState({
@@ -86,6 +89,7 @@ function App() {
     setSummary(null);
     setAssets([]);
     setAlerts([]);
+    setAssetHealth([]);
     navigate("dashboard");
   }
 
@@ -108,15 +112,17 @@ function App() {
     try {
       setError("");
 
-      const [summaryRes, assetsRes, alertsRes] = await Promise.all([
+      const [summaryRes, assetsRes, alertsRes, healthRes] = await Promise.all([
         api.get("/api/reports/summary"),
         api.get("/api/assets"),
         api.get("/api/alerts"),
+        api.get("/api/reports/asset-health"),
       ]);
 
       setSummary(summaryRes.data);
       setAssets(assetsRes.data);
       setAlerts(alertsRes.data);
+      setAssetHealth(healthRes.data);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load dashboard");
     }
@@ -282,6 +288,13 @@ function App() {
             SLA
           </button>
 
+          <button
+            className={activePage === "maintenance" ? "active" : "secondary"}
+            onClick={() => navigate("maintenance")}
+          >
+            Maintenance
+          </button>
+
           <button onClick={refreshActivePage}>Refresh</button>
 
           <button className="secondary" onClick={logout}>
@@ -298,11 +311,14 @@ function App() {
         <NotificationsPage refreshSignal={refreshSignal} />
       ) : activePage === "sla" ? (
         <SlaPage refreshSignal={refreshSignal} />
+      ) : activePage === "maintenance" ? (
+        <MaintenancePage refreshSignal={refreshSignal} />
       ) : (
         <DashboardPage
           summary={summary}
           assets={assets}
           alerts={alerts}
+          assetHealth={assetHealth}
           error={error}
           telemetryForm={telemetryForm}
           handleTelemetryChange={handleTelemetryChange}
@@ -319,6 +335,7 @@ function DashboardPage({
   summary,
   assets,
   alerts,
+  assetHealth,
   error,
   telemetryForm,
   handleTelemetryChange,
@@ -492,6 +509,42 @@ function DashboardPage({
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="table-card">
+        <h2>Asset Health</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Health Score</th>
+              <th>Health Status</th>
+              <th>Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assetHealth.map((row) => (
+              <tr key={row.asset_id}>
+                <td>{row.asset_name || row.asset_id}</td>
+                <td>{row.health_score}</td>
+                <td>
+                  <span className={`badge health-${row.health_status}`}>
+                    {row.health_status}
+                  </span>
+                </td>
+                <td className="wide-cell">
+                  {row.reasons?.length ? row.reasons.join(", ") : "No active risk signals"}
+                </td>
+              </tr>
+            ))}
+
+            {assetHealth.length === 0 && (
+              <tr>
+                <td colSpan="4">No asset health data found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </section>
     </>
   );

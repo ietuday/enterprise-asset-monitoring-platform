@@ -107,6 +107,25 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  maintenance-service:
+    build:
+      context: ./services/maintenance-service
+      dockerfile: Dockerfile
+    container_name: monitoring-maintenance-service
+    restart: always
+    environment:
+      PORT: ${MAINTENANCE_SERVICE_PORT:-8087}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+    ports:
+      - "${MAINTENANCE_SERVICE_PORT:-8087}:8087"
+    depends_on:
+      - postgres
+
   auth-service:
     build:
       context: ./services/auth-service
@@ -152,6 +171,7 @@ services:
       REPORT_SERVICE_URL: ${REPORT_SERVICE_URL}
       RULE_SERVICE_URL: ${RULE_SERVICE_URL}
       NOTIFICATION_SERVICE_URL: http://notification-service:8090
+      MAINTENANCE_SERVICE_URL: http://maintenance-service:8087
     ports:
       - "${API_GATEWAY_PORT}:4000"
     depends_on:
@@ -160,6 +180,7 @@ services:
       - telemetry-service
       - alert-service
       - notification-service
+      - maintenance-service
       - report-service
       - rule-service
 
