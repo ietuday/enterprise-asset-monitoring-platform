@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"maintenance-service/internal/models"
+	"maintenance-service/internal/service"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type fakeMaintenanceService struct {
@@ -21,6 +23,7 @@ type fakeMaintenanceService struct {
 	err            error
 	lastFilters    models.TaskFilters
 	lastCreate     models.TaskCreateRequest
+	lastUpdate     models.TaskUpdateRequest
 	lastStatus     models.StatusChangeRequest
 	lastCompletion models.CompletionRequest
 }
@@ -52,7 +55,8 @@ func (f *fakeMaintenanceService) GetTask(_ context.Context, _ string) (*models.M
 	return &task, nil
 }
 
-func (f *fakeMaintenanceService) UpdateTask(_ context.Context, _ string, _ models.TaskUpdateRequest, _ string) (*models.MaintenanceTask, error) {
+func (f *fakeMaintenanceService) UpdateTask(_ context.Context, _ string, req models.TaskUpdateRequest, _ string) (*models.MaintenanceTask, error) {
+	f.lastUpdate = req
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -194,6 +198,63 @@ func TestCreateTaskSuccess(t *testing.T) {
 	assertJSONField(t, recorder.Body.Bytes(), "status", models.StatusScheduled)
 }
 
+func TestGetTaskAndUpdateTask(t *testing.T) {
+	t.Run("get success", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{})
+		recorder := httptest.NewRecorder()
+		handler.GetTask(recorder, requestWithURLParam(http.MethodGet, "/maintenance/tasks/1", "id", "1", nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "title", "Inspect motor")
+	})
+
+	t.Run("get not found", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{err: pgx.ErrNoRows})
+		recorder := httptest.NewRecorder()
+		handler.GetTask(recorder, requestWithURLParam(http.MethodGet, "/maintenance/tasks/1", "id", "1", nil))
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "error", "maintenance task not found")
+	})
+
+	t.Run("update success", func(t *testing.T) {
+		fake := &fakeMaintenanceService{}
+		handler := NewMaintenanceHandler(fake)
+		recorder := httptest.NewRecorder()
+		request := requestWithURLParam(http.MethodPut, "/maintenance/tasks/1", "id", "1", jsonBody(t, map[string]string{"title": "Updated"}))
+		request.Header.Set("x-user-email", "admin@example.com")
+		handler.UpdateTask(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", recorder.Code)
+		}
+		if fake.lastUpdate.Title == nil || *fake.lastUpdate.Title != "Updated" {
+			t.Fatalf("expected update payload, got %+v", fake.lastUpdate)
+		}
+	})
+
+	t.Run("update invalid json", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{})
+		recorder := httptest.NewRecorder()
+		handler.UpdateTask(recorder, requestWithURLParam(http.MethodPut, "/maintenance/tasks/1", "id", "1", bytes.NewReader([]byte("{"))))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "error", "invalid request body")
+	})
+
+	t.Run("update validation error", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{})
+		recorder := httptest.NewRecorder()
+		handler.UpdateTask(recorder, requestWithURLParam(http.MethodPut, "/maintenance/tasks/1", "id", "1", jsonBody(t, map[string]string{"priority": "urgent"})))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "error", errInvalidPriority)
+	})
+}
+
 func TestChangeStatusRejectsInvalidStatus(t *testing.T) {
 	handler := NewMaintenanceHandler(&fakeMaintenanceService{})
 	recorder := httptest.NewRecorder()
@@ -205,6 +266,33 @@ func TestChangeStatusRejectsInvalidStatus(t *testing.T) {
 		t.Fatalf("expected 400, got %d", recorder.Code)
 	}
 	assertJSONField(t, recorder.Body.Bytes(), "error", errInvalidStatus)
+}
+
+func TestChangeStatusSuccessAndInvalidJSON(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		fake := &fakeMaintenanceService{}
+		handler := NewMaintenanceHandler(fake)
+		recorder := httptest.NewRecorder()
+		request := requestWithURLParam(http.MethodPatch, "/maintenance/tasks/1/status", "id", "1", jsonBody(t, map[string]string{"status": models.StatusInProgress, "comment": "started"}))
+		handler.ChangeStatus(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", recorder.Code)
+		}
+		if fake.lastStatus.Status != models.StatusInProgress {
+			t.Fatalf("expected status payload, got %+v", fake.lastStatus)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "status", models.StatusInProgress)
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{})
+		recorder := httptest.NewRecorder()
+		handler.ChangeStatus(recorder, requestWithURLParam(http.MethodPatch, "/maintenance/tasks/1/status", "id", "1", bytes.NewReader([]byte("{"))))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "error", "invalid request body")
+	})
 }
 
 func TestCompleteCancelAndHistory(t *testing.T) {
@@ -249,6 +337,62 @@ func TestCompleteCancelAndHistory(t *testing.T) {
 		}
 		if len(history) != 2 || history[1].Action != models.ActionTaskCompleted {
 			t.Fatalf("unexpected history: %+v", history)
+		}
+	})
+}
+
+func TestAssetOverdueAndCompletionErrors(t *testing.T) {
+	t.Run("asset tasks success", func(t *testing.T) {
+		fake := &fakeMaintenanceService{tasks: []models.MaintenanceTask{sampleTask()}}
+		handler := NewMaintenanceHandler(fake)
+		recorder := httptest.NewRecorder()
+		handler.ListAssetTasks(recorder, requestWithURLParam(http.MethodGet, "/maintenance/assets/motor-101/tasks", "assetId", "motor-101", nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", recorder.Code)
+		}
+		if fake.lastFilters.AssetID != "motor-101" {
+			t.Fatalf("expected asset filter, got %+v", fake.lastFilters)
+		}
+	})
+
+	t.Run("overdue success", func(t *testing.T) {
+		fake := &fakeMaintenanceService{tasks: []models.MaintenanceTask{sampleTask()}}
+		handler := NewMaintenanceHandler(fake)
+		recorder := httptest.NewRecorder()
+		handler.ListOverdueTasks(recorder, httptest.NewRequest(http.MethodGet, "/maintenance/overdue", nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", recorder.Code)
+		}
+		if !fake.lastFilters.Overdue {
+			t.Fatalf("expected overdue filter")
+		}
+	})
+
+	t.Run("complete invalid json", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{})
+		recorder := httptest.NewRecorder()
+		handler.CompleteTask(recorder, requestWithURLParam(http.MethodPost, "/maintenance/tasks/1/complete", "id", "1", bytes.NewReader([]byte("{"))))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", recorder.Code)
+		}
+		assertJSONField(t, recorder.Body.Bytes(), "error", "invalid request body")
+	})
+
+	t.Run("service conflict", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{err: service.ErrCompletedTaskLocked})
+		recorder := httptest.NewRecorder()
+		handler.UpdateTask(recorder, requestWithURLParam(http.MethodPut, "/maintenance/tasks/1", "id", "1", jsonBody(t, map[string]string{"title": "Updated"})))
+		if recorder.Code != http.StatusConflict {
+			t.Fatalf("expected 409, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("service bad dates", func(t *testing.T) {
+		handler := NewMaintenanceHandler(&fakeMaintenanceService{err: service.ErrInvalidTaskDates})
+		recorder := httptest.NewRecorder()
+		handler.UpdateTask(recorder, requestWithURLParam(http.MethodPut, "/maintenance/tasks/1", "id", "1", jsonBody(t, map[string]string{"title": "Updated"})))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", recorder.Code)
 		}
 	})
 }

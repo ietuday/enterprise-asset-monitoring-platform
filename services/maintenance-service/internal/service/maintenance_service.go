@@ -13,17 +13,30 @@ import (
 
 var ErrCompletedTaskLocked = errors.New("completed maintenance tasks cannot be modified")
 var ErrInvalidTaskDates = errors.New("due_date cannot be before scheduled_date")
+var ErrTitleRequired = errors.New("title is required")
+var ErrMaintenanceTypeRequired = errors.New("maintenance_type is required")
+var ErrInvalidPriority = errors.New("invalid priority")
+var ErrInvalidStatus = errors.New("invalid status")
 
 type MaintenanceService struct {
-	db *pgxpool.Pool
+	db database
 }
 
 func NewMaintenanceService(db *pgxpool.Pool) *MaintenanceService {
 	return &MaintenanceService{db: db}
 }
 
+type database interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 func (s *MaintenanceService) CreateTask(ctx context.Context, req models.TaskCreateRequest) (*models.MaintenanceTask, error) {
 	req = normalizeCreateRequest(req)
+	if err := validateCreateRequest(req); err != nil {
+		return nil, err
+	}
 
 	task := &models.MaintenanceTask{}
 	tx, err := s.db.Begin(ctx)
@@ -182,6 +195,9 @@ func applyTaskUpdate(current models.MaintenanceTask, req models.TaskUpdateReques
 	if current.Status == models.StatusCompleted {
 		return models.MaintenanceTask{}, ErrCompletedTaskLocked
 	}
+	if err := validateUpdateRequest(req); err != nil {
+		return models.MaintenanceTask{}, err
+	}
 
 	next := current
 	if req.AssetID != nil {
@@ -222,6 +238,10 @@ func applyTaskUpdate(current models.MaintenanceTask, req models.TaskUpdateReques
 }
 
 func (s *MaintenanceService) ChangeStatus(ctx context.Context, id string, req models.StatusChangeRequest) (*models.MaintenanceTask, error) {
+	if !models.IsValidStatus(req.Status) {
+		return nil, ErrInvalidStatus
+	}
+
 	current, err := s.GetTask(ctx, id)
 	if err != nil {
 		return nil, err
@@ -327,6 +347,41 @@ func (s *MaintenanceService) finalizeTask(ctx context.Context, id string, status
 	}
 
 	return task, tx.Commit(ctx)
+}
+
+func validateCreateRequest(req models.TaskCreateRequest) error {
+	if strings.TrimSpace(req.Title) == "" {
+		return ErrTitleRequired
+	}
+	if strings.TrimSpace(req.MaintenanceType) == "" {
+		return ErrMaintenanceTypeRequired
+	}
+	if !models.IsValidPriority(req.Priority) {
+		return ErrInvalidPriority
+	}
+	if req.DueDate.Before(req.ScheduledDate) {
+		return ErrInvalidTaskDates
+	}
+	return nil
+}
+
+func validateUpdateRequest(req models.TaskUpdateRequest) error {
+	if req.Title != nil && strings.TrimSpace(*req.Title) == "" {
+		return ErrTitleRequired
+	}
+	if req.MaintenanceType != nil && strings.TrimSpace(*req.MaintenanceType) == "" {
+		return ErrMaintenanceTypeRequired
+	}
+	if req.Priority != nil && !models.IsValidPriority(*req.Priority) {
+		return ErrInvalidPriority
+	}
+	if req.Status != nil && !models.IsValidStatus(*req.Status) {
+		return ErrInvalidStatus
+	}
+	if req.Status != nil && *req.Status == models.StatusCompleted {
+		return ErrCompletedTaskLocked
+	}
+	return nil
 }
 
 type queryRow interface {
