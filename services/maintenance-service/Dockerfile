@@ -9,7 +9,7 @@ COPY . .
 
 RUN go build -o maintenance-service .
 
-FROM alpine:latest
+FROM alpine:3.20
 
 WORKDIR /app
 
