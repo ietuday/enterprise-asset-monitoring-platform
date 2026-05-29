@@ -4,9 +4,9 @@ WORKDIR /app
 
 RUN apk add --no-cache gcc musl-dev postgresql-dev
 
-COPY requirements.txt .
+COPY requirements.lock .
 
-RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.lock
 
 COPY . .
 
