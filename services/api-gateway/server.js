@@ -43,6 +43,13 @@ const MAINTENANCE_SERVICE_URL =
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
+const reportRouteConfig = {
+  prefix: "/api/reports",
+  target: REPORT_SERVICE_URL,
+  downstreamPrefix: "/reports",
+  maintenanceInsightsPath: "/maintenance-insights",
+};
+
 const apiRateLimiter = rateLimit({
   windowMs: Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
   max: Number(process.env.API_RATE_LIMIT_MAX || 300),
@@ -138,6 +145,14 @@ function authorizeMaintenanceRequest(req, res, next) {
   }
 
   return authorizeRoles("ADMIN", "OPERATOR")(req, res, next);
+}
+
+function authorizeReportRequest(req, res, next) {
+  if (req.method === "GET") {
+    return authorizeRoles("ADMIN", "OPERATOR", "VIEWER")(req, res, next);
+  }
+
+  return authorizeRoles("ADMIN")(req, res, next);
 }
 
 /**
@@ -315,15 +330,17 @@ app.use(
  * - POST/PUT/DELETE /api/reports -> ADMIN only
  */
 app.use(
-  "/api/reports",
+  reportRouteConfig.prefix,
   apiRateLimiter,
   authenticate,
-  authorizeRoles("ADMIN", "OPERATOR", "VIEWER"),
+  authorizeReportRequest,
   createProxyMiddleware({
-    target: REPORT_SERVICE_URL,
+    target: reportRouteConfig.target,
     changeOrigin: true,
     pathRewrite: (path) => {
-      return path === "/" ? "/reports" : `/reports${path}`;
+      return path === "/"
+        ? reportRouteConfig.downstreamPrefix
+        : `${reportRouteConfig.downstreamPrefix}${path}`;
     },
   })
 );
@@ -462,6 +479,8 @@ module.exports = {
   app,
   authenticate,
   authorizeRoles,
+  authorizeReportRequest,
   authorizeMaintenanceRequest,
+  reportRouteConfig,
   startServer,
 };

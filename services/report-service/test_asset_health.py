@@ -3,11 +3,15 @@ from fastapi import HTTPException
 
 import main
 from main import (
+    build_maintenance_insights,
     build_asset_health,
     build_health_reasons,
+    build_recommendation,
     calculate_health_score,
+    calculate_risk_level,
     clamp_score,
     fetch_count_map,
+    get_maintenance_insights,
     get_alert_report,
     get_asset_report,
     get_one_asset_health,
@@ -87,6 +91,39 @@ def test_health_helpers_return_expected_empty_and_status_values():
         "1 SLA breach",
         "2 overdue maintenance task",
     ]
+
+
+@pytest.mark.parametrize(
+    ("health_score", "overdue_tasks", "risk_level"),
+    [
+        (90, 0, "low"),
+        (75, 0, "medium"),
+        (55, 0, "high"),
+        (30, 0, "critical"),
+        (90, 1, "medium"),
+        (75, 1, "high"),
+        (55, 1, "critical"),
+        (30, 1, "critical"),
+    ],
+)
+def test_calculate_risk_level(health_score, overdue_tasks, risk_level):
+    assert calculate_risk_level(health_score, overdue_tasks) == risk_level
+
+
+@pytest.mark.parametrize(
+    ("risk_level", "expected_action"),
+    [
+        ("low", "No immediate action required"),
+        ("medium", "Monitor asset and review upcoming maintenance"),
+        ("high", "Schedule preventive maintenance within 7 days"),
+        ("critical", "Immediate maintenance attention required"),
+    ],
+)
+def test_build_recommendation_actions(risk_level, expected_action):
+    action, reason = build_recommendation(risk_level, 85, 0)
+
+    assert action == expected_action
+    assert reason
 
 
 def test_summary_assets_and_alert_reports(monkeypatch):
@@ -204,6 +241,109 @@ def test_asset_health_returns_empty_when_asset_query_has_no_rows(monkeypatch):
     assert ("missing",) in executed_queries_by_params
 
 
+def test_maintenance_insights_builds_rows_from_asset_health_and_tasks(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "build_asset_health",
+        lambda: [
+            {
+                "asset_id": "1",
+                "asset_name": "Pump A",
+                "health_score": 45,
+                "health_status": "degraded",
+                "reasons": [],
+            },
+            {
+                "asset_id": "2",
+                "asset_name": "Compressor B",
+                "health_score": 90,
+                "health_status": "healthy",
+                "reasons": [],
+            },
+        ],
+    )
+    cursor = FakeCursor(
+        fetchone_values=[("maintenance_tasks",)],
+        fetchall_values=[
+            [("1", 2), ("2", 1)],
+            [("1", 1)],
+            [("1", FakeDate("2026-05-20"))],
+        ],
+    )
+    monkeypatch.setattr(main, "get_db_connection", lambda: FakeConnectionContext(cursor))
+
+    result = build_maintenance_insights()
+
+    assert result[0] == {
+        "asset_id": "1",
+        "asset_name": "Pump A",
+        "health_score": 45,
+        "risk_level": "critical",
+        "last_maintenance_date": "2026-05-20",
+        "open_tasks": 2,
+        "overdue_tasks": 1,
+        "recommended_action": "Immediate maintenance attention required",
+        "reason": "Asset health score is low at 45 and there are 1 overdue maintenance task",
+    }
+    assert result[1]["risk_level"] == "low"
+    assert result[1]["open_tasks"] == 1
+    assert result[1]["last_maintenance_date"] is None
+
+
+def test_maintenance_insights_returns_empty_when_no_asset_health(monkeypatch):
+    monkeypatch.setattr(main, "build_asset_health", lambda: [])
+
+    assert build_maintenance_insights() == []
+    assert get_maintenance_insights() == []
+
+
+def test_maintenance_insights_route_is_registered():
+    route_paths = {route.path for route in main.app.routes}
+
+    assert "/reports/maintenance-insights" in route_paths
+
+
+def test_maintenance_insights_endpoint_returns_expected_fields(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "build_maintenance_insights",
+        lambda: [
+            {
+                "asset_id": "1",
+                "asset_name": "Pump A",
+                "health_score": 45,
+                "risk_level": "high",
+                "last_maintenance_date": "2026-05-20",
+                "open_tasks": 2,
+                "overdue_tasks": 1,
+                "recommended_action": "Schedule preventive maintenance within 7 days",
+                "reason": "Asset health score is low at 45 and there are 1 overdue maintenance task",
+            }
+        ],
+    )
+
+    payload = get_maintenance_insights()
+
+    assert isinstance(payload, list)
+    assert set(payload[0]) == {
+        "asset_id",
+        "asset_name",
+        "health_score",
+        "risk_level",
+        "last_maintenance_date",
+        "open_tasks",
+        "overdue_tasks",
+        "recommended_action",
+        "reason",
+    }
+
+
+def test_maintenance_insights_endpoint_returns_empty_list(monkeypatch):
+    monkeypatch.setattr(main, "build_maintenance_insights", lambda: [])
+
+    assert get_maintenance_insights() == []
+
+
 class FakeConnectionContext:
     def __init__(self, cursor):
         self.connection = FakeConnection(cursor)
@@ -221,6 +361,14 @@ class FakeConnection:
 
     def cursor(self):
         return self._cursor
+
+
+class FakeDate:
+    def __init__(self, value):
+        self.value = value
+
+    def isoformat(self):
+        return self.value
 
 
 class FakeCursor:

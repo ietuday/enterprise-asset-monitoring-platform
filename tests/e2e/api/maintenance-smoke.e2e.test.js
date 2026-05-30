@@ -1,4 +1,3 @@
-const { describe, expect, it } = require("vitest");
 const { ApiClient } = require("./helpers/apiClient");
 const { createUniqueAsset, uniqueSuffix } = require("./helpers/testData");
 
@@ -46,5 +45,20 @@ describe("maintenance API smoke", () => {
 
     const healthRows = await api.listAssetHealth();
     expect(Array.isArray(healthRows)).toBe(true);
+
+    const insights = await api.listMaintenanceInsights();
+    expect(Array.isArray(insights)).toBe(true);
+    if (insights.length > 0) {
+      expect(insights[0]).toEqual(expect.objectContaining({
+        asset_id: expect.any(String),
+        asset_name: expect.any(String),
+        health_score: expect.any(Number),
+        risk_level: expect.any(String),
+        open_tasks: expect.any(Number),
+        overdue_tasks: expect.any(Number),
+        recommended_action: expect.any(String),
+        reason: expect.any(String),
+      }));
+    }
   });
 });

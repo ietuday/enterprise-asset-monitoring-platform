@@ -35,6 +35,7 @@ function App() {
   const [assets, setAssets] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [assetHealth, setAssetHealth] = useState([]);
+  const [maintenanceInsights, setMaintenanceInsights] = useState([]);
   const [error, setError] = useState("");
 
   const [telemetryForm, setTelemetryForm] = useState({
@@ -90,6 +91,7 @@ function App() {
     setAssets([]);
     setAlerts([]);
     setAssetHealth([]);
+    setMaintenanceInsights([]);
     navigate("dashboard");
   }
 
@@ -112,17 +114,19 @@ function App() {
     try {
       setError("");
 
-      const [summaryRes, assetsRes, alertsRes, healthRes] = await Promise.all([
+      const [summaryRes, assetsRes, alertsRes, healthRes, insightsRes] = await Promise.all([
         api.get("/api/reports/summary"),
         api.get("/api/assets"),
         api.get("/api/alerts"),
         api.get("/api/reports/asset-health"),
+        api.get("/api/reports/maintenance-insights"),
       ]);
 
       setSummary(summaryRes.data);
       setAssets(assetsRes.data);
       setAlerts(alertsRes.data);
       setAssetHealth(healthRes.data);
+      setMaintenanceInsights(insightsRes.data);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load dashboard");
     }
@@ -319,6 +323,7 @@ function App() {
           assets={assets}
           alerts={alerts}
           assetHealth={assetHealth}
+          maintenanceInsights={maintenanceInsights}
           error={error}
           telemetryForm={telemetryForm}
           handleTelemetryChange={handleTelemetryChange}
@@ -336,6 +341,7 @@ function DashboardPage({
   assets,
   alerts,
   assetHealth,
+  maintenanceInsights,
   error,
   telemetryForm,
   handleTelemetryChange,
@@ -541,6 +547,48 @@ function DashboardPage({
             {assetHealth.length === 0 && (
               <tr>
                 <td colSpan="4">No asset health data found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="table-card">
+        <h2>Maintenance Insights</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Health Score</th>
+              <th>Risk Level</th>
+              <th>Open Tasks</th>
+              <th>Overdue Tasks</th>
+              <th>Last Maintenance</th>
+              <th>Recommendation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {maintenanceInsights.map((row) => (
+              <tr key={row.asset_id}>
+                <td>{row.asset_name || row.asset_id}</td>
+                <td>{row.health_score}</td>
+                <td>
+                  <span className={`badge risk-${row.risk_level}`}>
+                    {row.risk_level}
+                  </span>
+                </td>
+                <td>{row.open_tasks}</td>
+                <td>{row.overdue_tasks}</td>
+                <td>{row.last_maintenance_date || "Never"}</td>
+                <td className="wide-cell">
+                  {row.recommended_action}
+                </td>
+              </tr>
+            ))}
+
+            {maintenanceInsights.length === 0 && (
+              <tr>
+                <td colSpan="7">No maintenance insights available</td>
               </tr>
             )}
           </tbody>

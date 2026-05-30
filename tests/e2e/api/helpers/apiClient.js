@@ -212,6 +212,10 @@ class ApiClient {
   listAssetHealth() {
     return this.get("/api/reports/asset-health");
   }
+
+  listMaintenanceInsights() {
+    return this.get("/api/reports/maintenance-insights");
+  }
 }
 
 module.exports = {

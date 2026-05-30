@@ -557,6 +557,7 @@ button:disabled {
 
 .maintenance-status-scheduled,
 .health-healthy,
+.risk-low,
 .priority-low {
   background: #ddf7e8;
   color: #126b36;
@@ -564,6 +565,7 @@ button:disabled {
 
 .maintenance-status-in_progress,
 .health-warning,
+.risk-medium,
 .priority-medium {
   background: #e4edff;
   color: #1f4fa3;
@@ -572,6 +574,7 @@ button:disabled {
 .maintenance-status-overdue,
 .maintenance-status-cancelled,
 .health-critical,
+.risk-critical,
 .priority-critical {
   background: #ffe1e1;
   color: #a40000;
@@ -583,6 +586,7 @@ button:disabled {
 }
 
 .health-degraded,
+.risk-high,
 .priority-high {
   background: #fff0cc;
   color: #8a5a00;

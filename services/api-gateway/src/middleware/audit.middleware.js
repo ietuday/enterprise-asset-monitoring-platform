@@ -20,6 +20,10 @@ function resolveAction(method, path) {
     if (method === "GET") return "READ_ALERTS";
   }
 
+  if (path.startsWith("/api/reports/maintenance-insights")) {
+    return "MAINTENANCE_INSIGHTS_VIEWED";
+  }
+
   if (path.startsWith("/api/reports")) {
     return "READ_REPORTS";
   }

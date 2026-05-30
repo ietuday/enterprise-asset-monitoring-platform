@@ -1,4 +1,8 @@
-const { authorizeMaintenanceRequest } = require("./server");
+const {
+  authorizeMaintenanceRequest,
+  authorizeReportRequest,
+  reportRouteConfig,
+} = require("./server");
 
 describe("maintenance route RBAC", () => {
   it("allows viewer read access", () => {
@@ -23,6 +27,30 @@ describe("maintenance route RBAC", () => {
       expect(next).toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("report route RBAC and maintenance insights routing", () => {
+  it("allows viewer read access to reports", () => {
+    const { req, res, next } = requestParts("GET", "VIEWER");
+    authorizeReportRequest(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("blocks viewer write access to reports", () => {
+    const { req, res, next, body } = requestParts("POST", "VIEWER");
+    authorizeReportRequest(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(body.error).toBe("access denied");
+  });
+
+  it("registers maintenance insights under the report-service proxy", () => {
+    expect(reportRouteConfig.prefix).toBe("/api/reports");
+    expect(reportRouteConfig.downstreamPrefix).toBe("/reports");
+    expect(reportRouteConfig.maintenanceInsightsPath).toBe("/maintenance-insights");
+    expect(reportRouteConfig.target).toBeTruthy();
   });
 });
 
