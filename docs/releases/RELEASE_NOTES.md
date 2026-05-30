@@ -1,3 +1,64 @@
+# v1.7.0 - Predictive Maintenance Insights
+
+## Overview
+
+This release introduces Predictive Maintenance Insights, helping users identify risky assets using asset health scores, maintenance task status, and maintenance history.
+
+## New Features
+
+- Added Maintenance Insights API in report-service.
+- Added deterministic risk scoring: low, medium, high, and critical.
+- Added overdue maintenance risk escalation.
+- Added recommended maintenance actions for each asset.
+- Added Dashboard Maintenance Insights table.
+- Added API Gateway route for maintenance insights.
+
+## API
+
+New endpoint:
+
+```text
+GET /api/reports/maintenance-insights
+```
+
+Example response:
+
+```json
+[
+  {
+    "asset_id": "1",
+    "asset_name": "Pump A",
+    "health_score": 45,
+    "risk_level": "high",
+    "last_maintenance_date": "2026-05-20",
+    "open_tasks": 2,
+    "overdue_tasks": 1,
+    "recommended_action": "Schedule preventive maintenance within 7 days",
+    "reason": "Asset health score is low at 45 and there are 1 overdue maintenance task"
+  }
+]
+```
+
+## Security and Governance
+
+- Added RBAC mapping for maintenance insights.
+- Added audit mapping for maintenance insight access.
+
+## Testing
+
+- Added report-service unit tests for risk calculation and recommendations.
+- Added report-service API tests.
+- Added API Gateway route tests.
+- Added React dashboard tests.
+- Added Playwright coverage for Maintenance Insights.
+- Added API smoke coverage.
+
+## Compatibility
+
+- Existing v1.6.0 preventive maintenance and asset health functionality remains unchanged.
+
+---
+
 # v1.6.0 - Preventive Maintenance and Asset Health
 
 ## Added

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import psycopg2
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -17,6 +18,18 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgres://monitoring_user:monitoring_pass@localhost:5435/monitoring_db",
 )
+
+
+class MaintenanceInsight(BaseModel):
+    asset_id: str
+    asset_name: str
+    health_score: int
+    risk_level: str
+    last_maintenance_date: str | None
+    open_tasks: int
+    overdue_tasks: int
+    recommended_action: str
+    reason: str
 
 
 @contextmanager
@@ -173,6 +186,70 @@ def calculate_health_score(
     return clamp_score(score)
 
 
+def calculate_risk_level(health_score: int | float, overdue_tasks: int) -> str:
+    if health_score >= 80:
+        base_level = "low"
+    elif health_score >= 60:
+        base_level = "medium"
+    elif health_score >= 40:
+        base_level = "high"
+    else:
+        base_level = "critical"
+
+    levels = ["low", "medium", "high", "critical"]
+    risk_index = levels.index(base_level)
+    if overdue_tasks > 0:
+        risk_index = min(risk_index + 1, len(levels) - 1)
+
+    return levels[risk_index]
+
+
+def build_recommendation(
+    risk_level: str,
+    health_score: int | float,
+    overdue_tasks: int,
+) -> tuple[str, str]:
+    overdue_text = f"{overdue_tasks} overdue maintenance task"
+    if overdue_tasks != 1:
+        overdue_text += "s"
+
+    if risk_level == "low":
+        return (
+            "No immediate action required",
+            "Asset health is healthy and there are no urgent maintenance issues",
+        )
+
+    if risk_level == "medium":
+        if overdue_tasks > 0:
+            reason = f"Risk was escalated by {overdue_text}"
+        else:
+            reason = f"Asset health score is moderate at {health_score}"
+        return "Monitor asset and review upcoming maintenance", reason
+
+    if risk_level == "high":
+        reasons = []
+        if health_score < 60:
+            reasons.append(f"Asset health score is low at {health_score}")
+        if overdue_tasks > 0:
+            reasons.append(f"there are {overdue_text}")
+        return (
+            "Schedule preventive maintenance within 7 days",
+            " and ".join(reasons) if reasons else "Asset requires preventive maintenance review",
+        )
+
+    reasons = []
+    if health_score < 40:
+        reasons.append(f"Asset health score is critical at {health_score}")
+    elif health_score < 60:
+        reasons.append(f"Asset health score is low at {health_score}")
+    if overdue_tasks > 0:
+        reasons.append(f"there are {overdue_text}")
+    return (
+        "Immediate maintenance attention required",
+        " and ".join(reasons) if reasons else "Asset requires immediate maintenance attention",
+    )
+
+
 @app.get("/reports/asset-health")
 def get_asset_health():
     return build_asset_health()
@@ -184,6 +261,84 @@ def get_one_asset_health(asset_id: str):
     if not rows:
         raise HTTPException(status_code=404, detail="asset not found")
     return rows[0]
+
+
+@app.get("/reports/maintenance-insights", response_model=list[MaintenanceInsight])
+def get_maintenance_insights():
+    return build_maintenance_insights()
+
+
+def build_maintenance_insights():
+    health_rows = build_asset_health()
+    if not health_rows:
+        return []
+
+    open_tasks = {}
+    overdue_tasks = {}
+    last_maintenance_dates = {}
+
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            if table_exists(cursor, "maintenance_tasks"):
+                open_tasks = fetch_count_map(
+                    cursor,
+                    """
+                    SELECT asset_id, COUNT(*)
+                    FROM maintenance_tasks
+                    WHERE status NOT IN ('completed', 'cancelled')
+                    GROUP BY asset_id;
+                    """,
+                )
+                overdue_tasks = fetch_count_map(
+                    cursor,
+                    """
+                    SELECT asset_id, COUNT(*)
+                    FROM maintenance_tasks
+                    WHERE due_date < NOW()
+                    AND status NOT IN ('completed', 'cancelled')
+                    GROUP BY asset_id;
+                    """,
+                )
+                cursor.execute(
+                    """
+                    SELECT asset_id, MAX(completed_at)::date
+                    FROM maintenance_tasks
+                    WHERE completed_at IS NOT NULL
+                    GROUP BY asset_id;
+                    """
+                )
+                last_maintenance_dates = {
+                    str(row[0]): row[1].isoformat() if row[1] else None
+                    for row in cursor.fetchall()
+                }
+
+    insights = []
+    for row in health_rows:
+        asset_id = str(row["asset_id"])
+        health_score = int(row["health_score"])
+        overdue_count = overdue_tasks.get(asset_id, 0)
+        risk_level = calculate_risk_level(health_score, overdue_count)
+        recommended_action, reason = build_recommendation(
+            risk_level,
+            health_score,
+            overdue_count,
+        )
+
+        insights.append(
+            {
+                "asset_id": asset_id,
+                "asset_name": row.get("asset_name") or asset_id,
+                "health_score": health_score,
+                "risk_level": risk_level,
+                "last_maintenance_date": last_maintenance_dates.get(asset_id),
+                "open_tasks": open_tasks.get(asset_id, 0),
+                "overdue_tasks": overdue_count,
+                "recommended_action": recommended_action,
+                "reason": reason,
+            }
+        )
+
+    return insights
 
 
 def build_asset_health(asset_id=None):

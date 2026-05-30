@@ -74,6 +74,19 @@ For API testing commands, see [docs/API-TESTING.md](docs/API-TESTING.md).
 
 ---
 
+## v1.7.0 - Predictive Maintenance Insights
+
+This release adds predictive maintenance insight records that combine asset health, maintenance status, and maintenance history to recommend next actions.
+
+- Maintenance Insights API in report-service
+- Deterministic risk levels: low, medium, high, critical
+- Overdue maintenance risk escalation
+- Dashboard Maintenance Insights table
+- API Gateway routing, RBAC, and audit action mapping for maintenance insights
+- Backend, API smoke, React, and Playwright coverage
+
+---
+
 ## v1.6.0 - Preventive Maintenance and Asset Health
 
 This release makes the platform more proactive by adding scheduled maintenance workflows before asset failure.
@@ -499,6 +512,15 @@ Report Service exposes Asset Health Score using assets, active alerts, open inci
 
 ```bash
 curl http://localhost:4000/api/reports/asset-health \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Maintenance Insights
+
+Report Service exposes predictive maintenance insights using asset health scores, maintenance task status, and maintenance history:
+
+```bash
+curl http://localhost:4000/api/reports/maintenance-insights \
   -H "Authorization: Bearer $TOKEN"
 ```
 

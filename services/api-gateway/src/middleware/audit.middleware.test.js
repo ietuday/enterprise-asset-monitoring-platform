@@ -10,3 +10,12 @@ describe("resolveAction maintenance audit mapping", () => {
     expect(resolveAction("GET", "/api/maintenance/tasks")).toBe("MAINTENANCE_TASK_VIEWED");
   });
 });
+
+describe("resolveAction maintenance insights audit mapping", () => {
+  it("maps maintenance insights reads before generic report reads", () => {
+    expect(resolveAction("GET", "/api/reports/maintenance-insights")).toBe(
+      "MAINTENANCE_INSIGHTS_VIEWED"
+    );
+    expect(resolveAction("GET", "/api/reports/summary")).toBe("READ_REPORTS");
+  });
+});

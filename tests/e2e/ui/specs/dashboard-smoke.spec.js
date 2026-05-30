@@ -17,4 +17,12 @@ test("dashboard shows core monitoring widgets", async ({ page }) => {
   await expect(page.getByText(/Total Alerts/i)).toBeVisible();
   await expect(page.getByText(/Open Alerts/i)).toBeVisible();
   await expect(page.getByText(/Telemetry Simulator/i)).toBeVisible();
+  const insights = page.locator("section.table-card").filter({ hasText: "Maintenance Insights" });
+  await expect(insights.getByRole("heading", { name: /Maintenance Insights/i })).toBeVisible();
+  await expect(insights.getByRole("columnheader", { name: /^Asset$/i })).toBeVisible();
+  await expect(insights.getByRole("columnheader", { name: /Risk Level/i })).toBeVisible();
+  await expect(insights.getByRole("columnheader", { name: /Recommendation/i })).toBeVisible();
+  await expect(
+    insights.getByText(/No maintenance insights available/i).or(insights.locator("tbody tr").filter({ hasText: /low|medium|high|critical/i }).first())
+  ).toBeVisible();
 });

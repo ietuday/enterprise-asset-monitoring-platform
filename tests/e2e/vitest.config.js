@@ -10,6 +10,7 @@ module.exports = {
       "api/monitoring-flow.e2e.test.js",
       "api/incident-flow.e2e.test.js",
       "api/notification-flow.e2e.test.js",
+      "api/maintenance-smoke.e2e.test.js",
       "api/sla-flow.e2e.test.js",
     ],
 
